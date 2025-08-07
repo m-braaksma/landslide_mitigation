@@ -1,7 +1,8 @@
 ---
 title: "Overview of Ecosystem Service: Landslide Mitigation"
 format:
-  html: default
+  html:
+    embed-resources: true
 
 author:
   - name: Matt Braaksma
