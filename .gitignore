@@ -1,0 +1,9 @@
+# MSI stuff
+config/global_vars.txt
+slurm_logs/*
+
+# hazelbean files
+c:/*
+
+# Python cache files
+*/__pycache__/*
