@@ -5,6 +5,12 @@ slurm_logs/*
 # hazelbean files
 c:/*
 
+# setup.py related
+*.egg-info/
+
 # Python cache files
 */__pycache__/*
 *.pyc
+
+explore*
+data*
