@@ -1,6 +1,7 @@
 # MSI stuff
 config/global_vars.txt
 slurm_logs/*
+config/archive_sdr/
 
 # hazelbean files
 c:/*
