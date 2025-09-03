@@ -3,7 +3,7 @@ title: "Overview of Ecosystem Service: Landslide Mitigation"
 format:
   html:
     embed-resources: true
-
+jupyter: python3
 author:
   - name: Matt Braaksma
     affiliations:
@@ -42,5 +42,32 @@ Finally, using the coefficients from this function, we estimate avoided mortalit
 
 To estimate the value of landslide mitigation, we employ a GDP-adjusted value of a staistical life (VSL). 
 
+## Results
+
+```{python}
+import os
+import pandas as pd
+import geopandas as gpd
+from utils.s3_utils import s3_handler
+
+# Load borders
+with s3_handler.temp_workspace("combine_zonal_stats") as temp_dir:
+    # Download and load GAUL data for ID mapping
+    gaul_s3_path = "Files/base_data/gep_landslides/emdat/gaul2014_2015.gpkg"
+    local_gaul = s3_handler.download_to_temp(gaul_s3_path, "gaul.gpkg")
+    
+    # Load GAUL data and create FID to ID mapping
+    gaul_gdf = gpd.read_file(local_gaul, layer='level2')
+    gaul_gdf = gaul_gdf.reset_index(drop=True)
+
+# Load results
+results_path = os.path.join('..', 'projects', 'global_results', 'intermediate', 'compute_avoided_mortality', 'avoided_mortality_results_2019.csv')
+results_df = pd.read_csv(results_path)
+
+# Merge
+results_gdf = gaul_gdf.merge(results_df, how='left', on='ADM2_CODE')
+# results_gdf.explore('avoided_mortality')
+results_gdf.plot('avoided_mortality')
+```
 
 # References
