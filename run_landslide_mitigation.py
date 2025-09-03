@@ -8,12 +8,15 @@ def build_landslide_mitigation_task_tree(p):
     # SLURM-based tasks
     if p.use_slurm:
         hb.log("Adding SLURM-based tasks to the project flow. Ensure access to a SLURM cluster and S3 bucket.")
-        p.reproject_task = p.add_task(slurm_tasks.reproject_raster, task_name="reproject_rasters", creates_dir=False)
-        p.sdr_task = p.add_task(slurm_tasks.run_sdr, task_name="run_sdr_model", creates_dir=False)
-        p.zonal_stats_task = p.add_task(slurm_tasks.run_zonal_stats, task_name="run_zonal_stats", creates_dir=False)
-        p.combine_task = p.add_task(slurm_tasks.combine_zonal_stats, task_name="combine_zonal_stats", creates_dir=True)
-    # Local tasks
-    p.damage_function_task = p.add_task(local_tasks.damage_function_task, task_name="damage_function_analysis", creates_dir=True)
+        p.reproject_task = p.add_task(slurm_tasks.reproject_rasters, creates_dir=False)
+        p.sdr_task = p.add_task(slurm_tasks.run_invest_sdr, creates_dir=False)
+        p.zonal_stats_task = p.add_task(slurm_tasks.run_zonal_stats, creates_dir=False)
+        
+    # Local tasks (still use S3 for now)
+    p.prepare_panel_data_task = p.add_task(local_tasks.prepare_panel_data, creates_dir=True)
+    p.damage_function_task = p.add_task(local_tasks.estimate_damage_function, creates_dir=True)
+    p.avoided_mortality_task = p.add_task(local_tasks.compute_avoided_mortality, creates_dir=True)
+    # p.value_task = p.add_task(local_tasks.generate_value_estimates, creates_dir=True)
     
     return p
 
@@ -54,6 +57,9 @@ if __name__ == '__main__':
     
     # Set operating system
     p.use_slurm = True
+
+    # Parameters for avoided mortality estimation
+    p.mortality_analysis_year = getattr(p, 'counterfactual_year', 2019)  # Default to 2019
 
     # Build task tree
     build_landslide_mitigation_task_tree(p)
