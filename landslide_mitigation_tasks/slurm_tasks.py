@@ -18,7 +18,7 @@ print("GDAL_DATA:", gdal_data_path)
 os.environ['GDAL_DATA'] = '/users/0/braak014/miniforge3/envs/teems02/share/gdal'
 
 
-def submit_slurm_job(command, job_dir, job_name, time="01:00:00", mem="8000M", tmp="4000M", cpus=1, dependency=None, force_run=False):
+def submit_slurm_job(command, job_dir, job_name, time="01:00:00", mem="8000M", tmp="4000M", cpus=1, dependency=None):
     """Submit a SLURM job with specified parameters using the correct format."""
     
     # Create log directory
@@ -28,7 +28,9 @@ def submit_slurm_job(command, job_dir, job_name, time="01:00:00", mem="8000M", t
     # Build the wrapped command with environment setup
     wrap_cmd = (
         "echo \"Job started at $(date)\"; "
-        "conda activate teems02; "
+        "source ~/miniforge3/etc/profile.d/conda.sh && "
+        "conda activate teems02 && "
+        "cd /users/0/braak014/Files/gep_landslides/landslide_mitigation && "  # Set to project root
         f"{command}; "
         "if [ $? -eq 0 ]; then "
         "echo \"Job completed successfully at $(date)\"; "
@@ -36,8 +38,6 @@ def submit_slurm_job(command, job_dir, job_name, time="01:00:00", mem="8000M", t
         "echo \"Job FAILED at $(date)\" >&2; "
         "fi"
     )
-    # Previously: "module load python3 && module load conda && source ~/.bashrc && conda activate earth_econ; "
-    # Now using conda directly due to local miniforge installation
 
     # Build SLURM command
     slurm_cmd = [
@@ -58,9 +58,6 @@ def submit_slurm_job(command, job_dir, job_name, time="01:00:00", mem="8000M", t
             dependency_str = dependency
         slurm_cmd.append(f"--dependency=afterok:{dependency_str}")
     
-    if force_run: 
-        slurm_cmd.append("--force")
-    
     slurm_cmd.extend(["--wrap", wrap_cmd])
 
     # Submit job and capture output
@@ -75,12 +72,12 @@ def submit_slurm_job(command, job_dir, job_name, time="01:00:00", mem="8000M", t
     else:
         raise RuntimeError(f"Could not parse job ID from sbatch output:\n{result.stdout}")
 
-def reproject_raster(p):
-    """Reproject all input rasters to EPSG:8857."""
+def reproject_rasters(p):
+    """Reproject all input rasters to EPSG:6933."""
     if p.run_this:
         hb.log("Checking existing outputs and submitting reprojection jobs...")
         job_ids = []
-        job_dir = "01_reproject_raster_epsg8857"
+        job_dir = "01_reproject_raster_epsg6933"
         
         # Track statistics
         total_rasters = len(p.sdr_input_rasters.keys())
@@ -90,7 +87,7 @@ def reproject_raster(p):
         for raster_name in p.sdr_input_rasters.keys():
             # Generate expected output S3 path
             input_s3_path = p.base_data_dir + p.sdr_input_rasters[raster_name]
-            output_s3_path = p.proj_data_dir + f"invest_sdr_input/{raster_name}_epsg8857.tif"
+            output_s3_path = p.proj_data_dir + f"invest_sdr_input/{raster_name}_epsg6933.tif"
             
             # Check if output already exists on S3
             if s3_handler.file_exists(output_s3_path) and not getattr(p, 'force_run', False):
@@ -100,17 +97,14 @@ def reproject_raster(p):
             # Determine command based on raster type
             if raster_name.startswith("lulc_"):
                 year = raster_name.split("_")[1]
-                command = f"python3 scripts/reproject_raster_epsg8857.py {raster_name} {year} {input_s3_path} {output_s3_path}"
+                command = f"python3 slurm_scripts/reproject_raster_epsg6933.py {raster_name} {year} {input_s3_path} {output_s3_path}"
                 job_name = f"{raster_name}"
                 time = "01:00:00"
             else:
-                command = f"python3 scripts/reproject_raster_epsg8857.py {raster_name} static {input_s3_path} {output_s3_path}"
+                command = f'python3 slurm_scripts/reproject_raster_epsg6933.py "{raster_name}" static "{input_s3_path}" "{output_s3_path}"'
+                # command = f"python3 slurm_scripts/reproject_raster_epsg6933.py {raster_name} static {input_s3_path} {output_s3_path}"
                 job_name = f"{raster_name}"
                 time = "00:20:00"
-            
-            # Add --force flag if force_run is enabled
-            if getattr(p, 'force_run', False):
-                command += " --force"
             
             job_id = submit_slurm_job(
                 command,
@@ -119,7 +113,6 @@ def reproject_raster(p):
                 time=time,
                 mem="8000M",
                 cpus=1,
-                force_run=getattr(p, 'force_run', False),
             )
             
             job_ids.append(job_id)
@@ -142,11 +135,11 @@ def get_sdr_paths(input_dir: str, year: int, counterfactual_run: bool = False):
     
     paths = {
         "input_paths": {
-            "lulc": invest_input_dir + f"lulc_{year}_epsg8857.tif",
+            "lulc": invest_input_dir + f"lulc_{year}_epsg6933.tif",
             "biophysical_table": invest_input_dir + "expanded_biophysical_table_gura.csv" if not counterfactual_run else invest_input_dir + "expanded_biophysical_table_gura_CF1.csv",
-            "dem": invest_input_dir + "alt_m_epsg8857.tif",
-            "erodibility": invest_input_dir + "soil_erodibility_epsg8857.tif",
-            "erosivity": invest_input_dir + "global_erosivity_epsg8857.tif",
+            "dem": invest_input_dir + "alt_m_epsg6933.tif",
+            "erodibility": invest_input_dir + "soil_erodibility_epsg6933.tif",
+            "erosivity": invest_input_dir + "global_erosivity_epsg6933.tif",
             "watersheds": invest_input_dir + "hybas_global_lev06_v1c.gpkg",
         },
         "output_dir_name": f"invest_sdr_output/lulc_esa_{year}" if not counterfactual_run else f"invest_sdr_output/lulc_esa_{year}_cf",
@@ -175,7 +168,7 @@ def check_sdr_output_exists(input_dir: str, year: int, counterfactual_run: bool 
     return s3_handler.file_exists(paths["s3_sed_export_path"])
 
 
-def run_sdr(p):
+def run_invest_sdr(p):
     """Run SDR model for all years including counterfactual."""
     if p.run_this:
         hb.log("Checking existing outputs and submitting SDR jobs...")
@@ -223,7 +216,7 @@ def run_sdr(p):
             
             # Create command with all paths as arguments
             command = (
-                f"python3 scripts/run_sdr.py {year} "
+                f"python3 slurm_scripts/run_sdr.py {year} "
                 f"--output-dir-name '{paths['output_dir_name']}' "
                 f"--s3-output-base '{paths['s3_output_base']}' "
                 f"--lulc '{paths['input_paths']['lulc']}' "
@@ -239,12 +232,11 @@ def run_sdr(p):
                 command,
                 job_dir,
                 job_name,
-                time="08:00:00",
+                time="16:00:00",
                 mem="100GB",
                 tmp="100GB",
                 cpus=8,
                 dependency=dependency_str,
-                force_run=False,
             )
             job_ids.append(job_id)
             submitted_count += 1
@@ -262,7 +254,7 @@ def run_sdr(p):
             
             # Create command with all paths as arguments
             command = (
-                f"python3 scripts/run_sdr.py {year} --counterfactual "
+                f"python3 slurm_scripts/run_sdr.py {year} --counterfactual "
                 f"--output-dir-name '{paths['output_dir_name']}' "
                 f"--s3-output-base '{paths['s3_output_base']}' "
                 f"--lulc '{paths['input_paths']['lulc']}' "
@@ -278,12 +270,11 @@ def run_sdr(p):
                 command,
                 job_dir,
                 job_name,
-                time="08:00:00",
+                time="16:00:00",
                 mem="100GB",
                 tmp="100GB",
                 cpus=8,
                 dependency=dependency_str,
-                force_run=False,
             )
             job_ids.append(job_id)
             submitted_count += 1
@@ -305,7 +296,7 @@ def run_sdr(p):
     return p
 
 
-def get_zonal_stats_paths(input_dir, base_data_dir, year, data_type, counterfactual_run=False):
+def get_zonal_stats_paths(input_dir, year, data_type, counterfactual_run=False):
     """Get all required paths for zonal statistics processing."""
     paths = {
         'output_dir_name': '',
@@ -314,7 +305,7 @@ def get_zonal_stats_paths(input_dir, base_data_dir, year, data_type, counterfact
     }
     
     # Common inputs
-    paths['input_paths']['gadm'] = base_data_dir + "cartographic/gadm/gadm_410-levels.gpkg"
+    paths['input_paths']['gaul'] = input_dir + "emdat/gaul2014_2015.gpkg"
     
     if data_type == 'sediment':
         if counterfactual_run:
@@ -381,14 +372,14 @@ def run_zonal_stats(p):
         # Check sediment export inputs (regular and counterfactual)
         for year in p.years:
             # Regular sediment export
-            paths = get_zonal_stats_paths(input_dir=p.proj_data_dir, base_data_dir=p.base_data_dir, year=year, data_type='sediment', counterfactual_run=False)
+            paths = get_zonal_stats_paths(input_dir=p.proj_data_dir, year=year, data_type='sediment', counterfactual_run=False)
             missing = check_zonal_stats_inputs_exist(paths)
             if missing:
                 for key, s3_path in missing:
                     input_errors.append(f"Missing sediment input for year {year}: {key} at {s3_path}")
             
             # Counterfactual sediment export
-            cf_paths = get_zonal_stats_paths(input_dir=p.proj_data_dir, base_data_dir=p.base_data_dir, year=year, data_type='sediment', counterfactual_run=True)
+            cf_paths = get_zonal_stats_paths(input_dir=p.proj_data_dir, year=year, data_type='sediment', counterfactual_run=True)
             cf_missing = check_zonal_stats_inputs_exist(cf_paths)
             if cf_missing:
                 for key, s3_path in cf_missing:
@@ -396,7 +387,7 @@ def run_zonal_stats(p):
         
         # Check worldpop inputs
         for year in p.years:
-            paths = get_zonal_stats_paths(input_dir=p.proj_data_dir, base_data_dir=p.base_data_dir, year=year, data_type='worldpop')
+            paths = get_zonal_stats_paths(input_dir=p.proj_data_dir, year=year, data_type='worldpop')
             missing = check_zonal_stats_inputs_exist(paths)
             if missing:
                 for key, s3_path in missing:
@@ -404,7 +395,7 @@ def run_zonal_stats(p):
         
         # Check era5 inputs
         for year in p.years:
-            paths = get_zonal_stats_paths(input_dir=p.proj_data_dir, base_data_dir=p.base_data_dir, year=year, data_type='era5')
+            paths = get_zonal_stats_paths(input_dir=p.proj_data_dir, year=year, data_type='era5')
             missing = check_zonal_stats_inputs_exist(paths)
             if missing:
                 for key, s3_path in missing:
@@ -423,14 +414,14 @@ def run_zonal_stats(p):
                 continue
             
             # Get paths for this year and pass them as arguments
-            paths = get_zonal_stats_paths(input_dir=p.proj_data_dir, base_data_dir=p.base_data_dir, year=year, data_type='sediment', counterfactual_run=False)
+            paths = get_zonal_stats_paths(input_dir=p.proj_data_dir, year=year, data_type='sediment', counterfactual_run=False)
             
             # Create command with all paths as arguments
             command = (
-                f"python3 scripts/run_zonal_stats.py sediment {year} "
+                f"python3 slurm_scripts/run_zonal_stats.py sediment {year} "
                 f"--output-dir-name '{paths['output_dir_name']}' "
                 f"--s3-output-base '{paths['s3_output_base']}' "
-                f"--gadm '{paths['input_paths']['gadm']}' "
+                f"--vector '{paths['input_paths']['gaul']}' "
                 f"--sediment-export '{paths['input_paths']['sediment_export']}'"
             )
             
@@ -444,7 +435,6 @@ def run_zonal_stats(p):
                 tmp="8GB",
                 cpus=2,
                 dependency=dependency_str,
-                force_run=False,
             )
             job_ids.append(job_id)
             submitted_count += 1
@@ -458,14 +448,14 @@ def run_zonal_stats(p):
                 continue
             
             # Get paths for counterfactual run
-            paths = get_zonal_stats_paths(input_dir=p.proj_data_dir, base_data_dir=p.base_data_dir, year=year, data_type='sediment', counterfactual_run=True)
+            paths = get_zonal_stats_paths(input_dir=p.proj_data_dir, year=year, data_type='sediment', counterfactual_run=True)
             
             # Create command with all paths as arguments
             command = (
-                f"python3 scripts/run_zonal_stats.py sediment {year} --counterfactual "
+                f"python3 slurm_scripts/run_zonal_stats.py sediment {year} --counterfactual "
                 f"--output-dir-name '{paths['output_dir_name']}' "
                 f"--s3-output-base '{paths['s3_output_base']}' "
-                f"--gadm '{paths['input_paths']['gadm']}' "
+                f"--vector '{paths['input_paths']['gaul']}' "
                 f"--sediment-export '{paths['input_paths']['sediment_export']}'"
             )
             
@@ -479,7 +469,6 @@ def run_zonal_stats(p):
                 tmp="8GB",
                 cpus=2,
                 dependency=dependency_str,
-                force_run=False,
             )
             job_ids.append(job_id)
             submitted_count += 1
@@ -493,14 +482,14 @@ def run_zonal_stats(p):
                 continue
             
             # Get paths for this year and pass them as arguments
-            paths = get_zonal_stats_paths(input_dir=p.proj_data_dir, base_data_dir=p.base_data_dir, year=year, data_type='worldpop')
+            paths = get_zonal_stats_paths(input_dir=p.proj_data_dir, year=year, data_type='worldpop')
             
             # Create command with all paths as arguments
             command = (
-                f"python3 scripts/run_zonal_stats.py worldpop {year} "
+                f"python3 slurm_scripts/run_zonal_stats.py worldpop {year} "
                 f"--output-dir-name '{paths['output_dir_name']}' "
                 f"--s3-output-base '{paths['s3_output_base']}' "
-                f"--gadm '{paths['input_paths']['gadm']}' "
+                f"--vector '{paths['input_paths']['gaul']}' "
                 f"--worldpop '{paths['input_paths']['worldpop']}' "
                 f"--worldpop-reference '{paths['input_paths']['worldpop_reference']}'"
             )
@@ -515,7 +504,6 @@ def run_zonal_stats(p):
                 tmp="8GB",
                 cpus=2,
                 dependency=dependency_str,
-                force_run=False,
             )
             job_ids.append(job_id)
             submitted_count += 1
@@ -529,14 +517,14 @@ def run_zonal_stats(p):
                 continue
             
             # Get paths for this year and pass them as arguments
-            paths = get_zonal_stats_paths(input_dir=p.proj_data_dir, base_data_dir=p.base_data_dir, year=year, data_type='era5')
+            paths = get_zonal_stats_paths(input_dir=p.proj_data_dir, year=year, data_type='era5')
             
             # Create command with all paths as arguments
             command = (
-                f"python3 scripts/run_zonal_stats.py era5 {year} "
+                f"python3 slurm_scripts/run_zonal_stats.py era5 {year} "
                 f"--output-dir-name '{paths['output_dir_name']}' "
                 f"--s3-output-base '{paths['s3_output_base']}' "
-                f"--gadm '{paths['input_paths']['gadm']}' "
+                f"--vector '{paths['input_paths']['gaul']}' "
                 f"--era5-precip '{paths['input_paths']['era5_precip']}'"
             )
             
@@ -550,7 +538,6 @@ def run_zonal_stats(p):
                 tmp="8GB",
                 cpus=2,
                 dependency=dependency_str,
-                force_run=False,
             )
             job_ids.append(job_id)
             submitted_count += 1
@@ -573,190 +560,4 @@ def run_zonal_stats(p):
         
         p.zonal_stats_job_ids = job_ids
     
-    return p
-
-
-def combine_zonal_stats(p):
-    """Combine all zonal statistics results into a single DataFrame."""
-    if not p.run_this:
-        return p
-    
-    # Define expected output file 
-    # Save to repo so that the analysis can be picked up locally here
-    code_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    data_dir = os.path.join(code_dir, 'data')
-    os.makedirs(data_dir, exist_ok=True)
-    output_file = os.path.join(data_dir, 'zonal_stats_adm2.csv')
-    
-    # Check if output already exists and skip if not forcing
-    if os.path.exists(output_file) and not getattr(p, 'force_run', False):
-        hb.log(f"Output file already exists: {output_file}")
-        hb.log("Skipping combine zonal statistics (use force_run=True to override)")
-        return p
-    
-    hb.log("Starting combine zonal statistics task...")
-    
-    try:
-        records = []
-        hb.log("Starting to combine zonal statistics results...")
-        hb.log(f"Project data dir: {p.proj_data_dir}")
-        hb.log(f"Output dir: {data_dir}")
-        hb.log(f"Years: {p.years}")
-        
-        # Use s3_handler temp workspace for all downloads
-        with s3_handler.temp_workspace("combine_zonal_stats") as temp_dir:
-            # Download and load GADM data for ID mapping
-            gadm_s3_path = p.base_data_dir + "cartographic/gadm/gadm_410-levels.gpkg"
-            hb.log(f"Downloading GADM file from: {gadm_s3_path}")
-            local_gadm = s3_handler.download_to_temp(gadm_s3_path, "gadm_410-levels.gpkg")
-            
-            # Load GADM data and create FID to ID mapping
-            hb.log("Loading GADM data for ID mapping...")
-            gadm_gdf = gpd.read_file(local_gadm, layer='ADM_2', ignore_geometry=True)
-            
-            # Create mapping from FID (index) to the desired columns
-            fid_to_ids = {}
-            for idx, row in gadm_gdf.iterrows():
-                fid_to_ids[idx] = {
-                    'GID_0': row['GID_0'],
-                    'COUNTRY': row['COUNTRY'], 
-                    'GID_2': row['GID_2'],
-                    'NAME_2': row['NAME_2']
-                }
-            
-            hb.log(f"Created FID mapping for {len(fid_to_ids)} administrative units")
-            
-            for year in p.years:
-                hb.log(f"Processing year {year}...")
-                
-                # Define S3 paths
-                sed_export_s3_path = p.proj_data_dir + f"zonal_stats/sed_export_{year}_zonal_stats.pkl"
-                cf_sed_export_s3_path = p.proj_data_dir + f"zonal_stats/sed_export_cf_{year}_zonal_stats.pkl"
-                worldpop_s3_path = p.proj_data_dir + f"zonal_stats/worldpop_{year}_zonal_stats.pkl"
-                era5_s3_path = p.proj_data_dir + f"zonal_stats/era5_precip_{year}_zonal_stats.pkl"
-                
-                # Download and load data from S3
-                sed_stats = None
-                if s3_handler.file_exists(sed_export_s3_path):
-                    try:
-                        local_sed_file = s3_handler.download_to_temp(sed_export_s3_path, f"sed_export_{year}_zonal_stats.pkl")
-                        with open(local_sed_file, 'rb') as f:
-                            sed_stats = pickle.load(f)
-                    except Exception as e:
-                        hb.log(f"Warning: Could not load {sed_export_s3_path}: {e}", level=30)
-                
-                cf_sed_stats = None
-                if s3_handler.file_exists(cf_sed_export_s3_path):
-                    try:
-                        local_cf_sed_file = s3_handler.download_to_temp(cf_sed_export_s3_path, f"sed_export_cf_{year}_zonal_stats.pkl")
-                        with open(local_cf_sed_file, 'rb') as f:
-                            cf_sed_stats = pickle.load(f)
-                    except Exception as e:
-                        hb.log(f"Warning: Could not load {cf_sed_export_s3_path}: {e}", level=30)
-                
-                pop_stats = None
-                if s3_handler.file_exists(worldpop_s3_path):
-                    try:
-                        local_pop_file = s3_handler.download_to_temp(worldpop_s3_path, f"worldpop_{year}_zonal_stats.pkl")
-                        with open(local_pop_file, 'rb') as f:
-                            pop_stats = pickle.load(f)
-                    except Exception as e:
-                        hb.log(f"Warning: Could not load {worldpop_s3_path}: {e}", level=30)
-                
-                era5_stats = None
-                if s3_handler.file_exists(era5_s3_path):
-                    try:
-                        local_era5_file = s3_handler.download_to_temp(era5_s3_path, f"era5_precip_{year}_zonal_stats.pkl")
-                        with open(local_era5_file, 'rb') as f:
-                            era5_stats = pickle.load(f)
-                    except Exception as e:
-                        hb.log(f"Warning: Could not load {era5_s3_path}: {e}", level=30)
-                
-                if sed_stats is None and pop_stats is None and cf_sed_stats is None:
-                    missing = [name for name, value in [
-                        ("sed_stats", sed_stats),
-                        ("pop_stats", pop_stats), 
-                        ("cf_sed_stats", cf_sed_stats),
-                        ("era5_stats", era5_stats)
-                    ] if value is None]
-
-                    hb.log(f"Warning: No data found for year {year}. Missing: {', '.join(missing)}", level=30)
-                
-                # Use union of all adm_ids (FIDs) from all sources
-                all_adm_ids = set()
-                if sed_stats:
-                    all_adm_ids.update(sed_stats.keys())
-                if pop_stats:
-                    all_adm_ids.update(pop_stats.keys())
-                if cf_sed_stats:
-                    all_adm_ids.update(cf_sed_stats.keys())
-                if era5_stats:
-                    all_adm_ids.update(era5_stats.keys())
-                
-                for fid in all_adm_ids:
-                    record = {
-                        'fid': fid,  # Keep original FID for reference
-                        'year': year,
-                    }
-                    
-                    # Add GADM ID columns if FID exists in mapping
-                    if fid in fid_to_ids:
-                        record.update(fid_to_ids[fid])
-                    else:
-                        hb.log(f"Warning: FID {fid} not found in GADM mapping", level=30)
-                        # Add empty values for missing FIDs
-                        record.update({
-                            'GID_0': None,
-                            'COUNTRY': None,
-                            'GID_2': None,
-                            'NAME_2': None
-                        })
-                    
-                    # Add all sed_export stats
-                    if sed_stats:
-                        for stat_key, stat_value in sed_stats.get(fid, {}).items():
-                            record[f'sed_export_{stat_key}'] = stat_value
-                    
-                    # Add all worldpop stats
-                    if pop_stats:
-                        for stat_key, stat_value in pop_stats.get(fid, {}).items():
-                            record[f'worldpop_{stat_key}'] = stat_value
-
-                    # Add all cf_sed_export stats
-                    if cf_sed_stats:
-                        for stat_key, stat_value in cf_sed_stats.get(fid, {}).items():
-                            record[f'cf_sed_export_{stat_key}'] = stat_value
-                
-                    # Add all era5 stats
-                    if era5_stats:
-                        for stat_key, stat_value in era5_stats.get(fid, {}).items():
-                            record[f'era5_stats_{stat_key}'] = stat_value
-                    
-                    records.append(record)
-        
-        # Convert to DataFrame
-        hb.log(f"Creating DataFrame with {len(records)} records...")
-        df = pd.DataFrame.from_records(records)
-        
-        # Reorder columns to put ID columns first
-        id_columns = ['fid', 'year', 'GID_0', 'COUNTRY', 'GID_2', 'NAME_2']
-        other_columns = [col for col in df.columns if col not in id_columns]
-        df = df[id_columns + other_columns]
-        
-        # Save directly to the specified output directory
-        df.to_csv(output_file, index=False)
-        
-        hb.log(f"Combined zonal statistics saved to: {output_file}")
-        hb.log(f"DataFrame shape: {df.shape}")
-        hb.log(f"Columns: {list(df.columns)}")
-        
-        # Log some sample data to verify the mapping worked
-        if not df.empty:
-            hb.log("Sample records:")
-            hb.log(df[id_columns].head().to_string())
-        
-    except Exception as e:
-        hb.log(f"Failed to combine zonal statistics: {e}", level=40)
-        raise e
-        
     return p
