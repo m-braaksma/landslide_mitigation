@@ -16,7 +16,11 @@ def build_landslide_mitigation_task_tree(p):
     p.prepare_panel_data_task = p.add_task(local_tasks.prepare_panel_data, creates_dir=True)
     p.damage_function_task = p.add_task(local_tasks.estimate_damage_function, creates_dir=True)
     p.avoided_mortality_task = p.add_task(local_tasks.compute_avoided_mortality, creates_dir=True)
-    # p.value_task = p.add_task(local_tasks.generate_value_estimates, creates_dir=True)
+    p.compute_value_task = p.add_task(local_tasks.compute_value, creates_dir=True)
+
+    # Postprocessing
+    p.visualize_task = p.add_task(local_tasks.plot_results, creates_dir=True)
+
     
     return p
 

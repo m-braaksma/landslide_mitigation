@@ -14,6 +14,8 @@ import statsmodels.api as sm
 import statsmodels.formula.api as smf
 from statsmodels.iolib.summary2 import summary_col
 
+import matplotlib.pyplot as plt
+
 from utils.s3_utils import s3_handler
 
 # Reset GDAL_DATA path after importing hazelbean
@@ -84,7 +86,9 @@ def combine_zonal_stats_subtask(p):
             fid_to_ids = {
                 idx: {
                     'ADM2_CODE': row['ADM2_CODE'],
-                    'ADM2_NAME': row['ADM2_NAME']
+                    'ADM2_NAME': row['ADM2_NAME'],
+                    'ADM0_CODE': row.get('ADM0_CODE'),
+                    'ADM0_NAME': row.get('ADM0_NAME')
                 }
                 for idx, row in gaul_gdf.iterrows()
             }
@@ -172,7 +176,9 @@ def combine_zonal_stats_subtask(p):
                         # Add empty values for missing FIDs
                         record.update({
                             'ADM2_CODE': None,
-                            'ADM2_NAME': None
+                            'ADM2_NAME': None,
+                            'ADM0_CODE': None,
+                            'ADM0_NAME': None
                         })
                     
                     # Add all sed_export stats
@@ -202,7 +208,7 @@ def combine_zonal_stats_subtask(p):
         df = pd.DataFrame.from_records(records)
         
         # Reorder columns to put ID columns first
-        id_columns = ['fid', 'year', 'ADM2_CODE', 'ADM2_NAME']
+        id_columns = ['fid', 'year', 'ADM2_CODE', 'ADM2_NAME', 'ADM0_CODE', 'ADM0_NAME']
         other_columns = [col for col in df.columns if col not in id_columns]
         df = df[id_columns + other_columns]
         
@@ -985,7 +991,7 @@ def compute_avoided_mortality(p, target_year=2019):
     print(f"Mean avoided mortality: {avoided_mortality.mean()}")
     
     # Create results dataframe
-    results = df[['ADM2_CODE', 'year']].copy()
+    results = df[['ADM2_CODE', 'ADM2_NAME', 'ADM0_CODE', 'ADM0_NAME', 'year']].copy()
     results['mortality_baseline'] = mortality_baseline
     results['mortality_mitigation'] = mortality_counterfactual
     results['avoided_mortality'] = avoided_mortality
@@ -1032,3 +1038,223 @@ def compute_avoided_mortality(p, target_year=2019):
     hb.log(f"Avoided mortality computation for {target_year} completed successfully!")
     
     return results_summary
+
+def compute_value(p, target_year=2019):
+    # VSL values by year (million USD)
+    # https://www.transportation.gov/office-policy/transportation-policy/revised-departmental-guidance-on-valuation-of-a-statistical-life-in-economic-analysis
+    VSL_BY_YEAR = {
+        2024: 13.7e6,
+        2023: 13.2e6,
+        2022: 12.5e6,
+        2021: 11.8e6,
+        2020: 11.6e6,
+        2019: 10.9e6,
+        2018: 10.5e6,
+        2017: 10.2e6,
+        2016: 9.9e6,
+        2015: 9.6e6,
+        2014: 9.4e6,
+        2013: 9.2e6,
+        2012: 9.1e6,
+    }
+
+    if target_year in VSL_BY_YEAR:
+        vsl_usa = VSL_BY_YEAR[target_year]
+    else:
+        raise ValueError(f"VSL not defined for year {target_year}")
+
+    # Load avoided mortality results
+    results_path = os.path.join(p.compute_avoided_mortality_dir, f'avoided_mortality_results_{target_year}.csv')
+    if not os.path.exists(results_path):
+        raise FileNotFoundError(f"Avoided mortality results not found: {results_path}. Run compute_avoided_mortality task first.")
+    results = pd.read_csv(results_path)
+
+    # Load GDP data
+    # TODO: upload to s3 or define local dir
+    gdp_path = os.path.join('.', 'data', 'worldbank_gdp_per_capita.csv')
+    gdp_df = pd.read_csv(gdp_path)
+
+    # Load crosswalk between GAUL country codes and iso3
+    crosswalk_path = os.path.join('.', 'data', 'GAUL_L0_2024-2014.csv')
+    crosswalk_df = pd.read_csv(crosswalk_path, encoding='latin1')
+    crosswalk_df = crosswalk_df[crosswalk_df['GAUL_2014'].notna() & crosswalk_df['iso3_code'].notna()]
+
+    # Merge crosswalk to GDP data
+    # crosswalk_df = crosswalk_df[['GAUL_2014', 'iso3_code']]
+    gdp_merged_df = gdp_df.merge(crosswalk_df, left_on='Country Code', right_on='iso3_code', how='inner')
+    print("Unique GAUL_2014 in gdp_merged_df:", gdp_merged_df['GAUL_2014'].unique())
+
+    # Merge GDP data to results
+    results = results[~(results['ADM0_NAME'].isna() & results['ADM0_CODE'].isna())]
+    results['ADM0_CODE'] = results['ADM0_CODE'].astype(int)
+    gdp_merged_df = gdp_merged_df[gdp_merged_df['GAUL_2014'].apply(lambda x: str(x).strip().isdigit())]
+    gdp_merged_df['GAUL_2014'] = gdp_merged_df['GAUL_2014'].astype(int)
+    print("Unique ADM0_CODE in results:", results['ADM0_CODE'].unique())
+    print("Unique GAUL_2014 in gdp_merged_df:", gdp_merged_df['GAUL_2014'].unique())
+    results_gdp = results.merge(gdp_merged_df, left_on='ADM0_CODE', right_on='GAUL_2014', how='left')
+    # After merge: print rows where GDP data did not merge
+    # unmatched_countries_from_results = set(results['ADM0_NAME']) - set(gdp_merged_df['24_admnm'])
+    # print("Countries in results not found in GAUL data:", unmatched_countries_from_results)
+
+    # Calculate GDP-adjusted VSL for each region
+    gdp_col = f'{target_year} [YR{target_year}]'
+    results_gdp[gdp_col] = pd.to_numeric(results_gdp[gdp_col], errors='coerce')
+    gdp_per_capita_usa = pd.to_numeric(gdp_df[gdp_df['Country Code'] == 'USA'][gdp_col].values[0], errors='coerce')
+    results_gdp['vsl_adjusted'] = vsl_usa * (results_gdp[gdp_col] / gdp_per_capita_usa)
+
+    # Calculate dollar value of avoided mortality
+    results_gdp['avoided_mortality_value_usd'] = results_gdp['avoided_mortality'] * results_gdp['vsl_adjusted']
+    
+    # Save results
+    value_results_path = os.path.join(p.cur_dir, f'gdp_adjusted_value_{target_year}.csv')
+    results_gdp.to_csv(value_results_path, index=False)
+
+def plot_results(p, target_year=2019):
+    # # Load borders
+    # with s3_handler.temp_workspace("combine_zonal_stats") as temp_dir:
+    #     # Download and load GAUL data for ID mapping
+    #     gaul_s3_path = "Files/base_data/gep_landslides/emdat/gaul2014_2015.gpkg"
+    #     local_gaul = s3_handler.download_to_temp(gaul_s3_path, "gaul.gpkg")
+
+    #     # Load GAUL data and create FID to ID mapping
+    #     gaul_gdf = gpd.read_file(local_gaul, layer='level2')
+    #     gaul_gdf = gaul_gdf.reset_index(drop=True)
+
+    # # Load results
+    # results_path = os.path.join('..', 'projects', 'global_results', 'intermediate', 'compute_value', 'gdp_adjusted_value_2019.csv')
+    # results_df = pd.read_csv(results_path)
+
+    # # Merge
+    # results_gdf = gaul_gdf.merge(results_df, how='left', on='ADM2_CODE')
+
+    # # Plot
+    # fig, ax = plt.subplots(figsize=(8, 6))
+    # results_gdf.plot(
+    #     column="avoided_mortality",
+    #     cmap="Greens",
+    #     linewidth=0.01,
+    #     edgecolor="black", 
+    #     legend=True,
+    #     legend_kwds={"shrink": 0.6},  # shrink colorbar
+    #     ax=ax
+    # )
+
+    # # Add title
+    # ax.set_title("Avoided Landslide Mortality 2019", fontsize=12)
+    # ax.set_axis_off()
+
+    # plt.tight_layout()
+    # out_path = os.path.join(p.cur_dir, 'avoided_mortality_2019.png')
+    # plt.savefig(out_path, dpi=300)
+
+
+    # Define paths
+    gaul_s3_path = "Files/base_data/gep_landslides/emdat/gaul2014_2015.gpkg"
+    results_path = os.path.join(p.compute_value_dir, f'gdp_adjusted_value_{target_year}.csv')
+
+    # Check for required files
+    if not os.path.exists(results_path):
+        hb.log(f"Missing results file: {results_path}", level=40)
+        return
+    # Download and check GAUL file
+    with s3_handler.temp_workspace("plot_results") as temp_dir:
+        local_gaul = s3_handler.download_to_temp(gaul_s3_path, "gaul.gpkg")
+        if not os.path.exists(local_gaul):
+            hb.log(f"Missing GAUL file: {local_gaul}", level=40)
+            return
+
+        # Load GAUL data
+        gaul_gdf = gpd.read_file(local_gaul, layer='level2')
+        gaul_gdf = gaul_gdf.reset_index(drop=True)
+
+    # Load results
+    results_df = pd.read_csv(results_path)
+
+    # Merge by ADM2_CODE
+    results_gdf = gaul_gdf.merge(results_df, how='left', on='ADM2_CODE')
+
+    # Plot avoided_mortality (Blues)
+    fig, ax = plt.subplots(figsize=(8, 6))
+    results_gdf.plot(
+        column="avoided_mortality",
+        cmap="Blues",
+        linewidth=0.01,
+        edgecolor="black",
+        legend=True,
+        legend_kwds={"shrink": 0.4},
+        ax=ax
+    )
+    ax.set_title("Avoided Landslide Mortality 2019 (ADM2)", fontsize=12)
+    ax.set_axis_off()
+    plt.tight_layout()
+    out_path1 = os.path.join(p.cur_dir, f'avoided_mortality_{target_year}_adm2.png')
+    plt.savefig(out_path1, dpi=300)
+    plt.close(fig)
+
+    # Plot avoided_mortality_value_usd (Greens)
+    fig, ax = plt.subplots(figsize=(8, 6))
+    results_gdf.plot(
+        column="avoided_mortality_value_usd",
+        cmap="Greens",
+        linewidth=0.01,
+        edgecolor="black",
+        legend=True,
+        legend_kwds={"shrink": 0.4},
+        ax=ax
+    )
+    ax.set_title("Avoided Mortality Value (USD, 2019, ADM2)", fontsize=12)
+    ax.set_axis_off()
+    plt.tight_layout()
+    out_path2 = os.path.join(p.cur_dir, f'avoided_mortality_value_usd_{target_year}_adm2.png')
+    plt.savefig(out_path2, dpi=300)
+    plt.close(fig)
+
+    # Collapse by ADM0_NAME (country)
+    collapsed_df = results_df.groupby('ADM0_NAME').agg({
+        'avoided_mortality': 'sum',
+        'avoided_mortality_value_usd': 'sum'
+    }).reset_index()
+
+    # Collapse GAUL geometries by country
+    gaul_country_gdf = gaul_gdf.dissolve(by='ADM0_NAME', as_index=False)
+
+    # Merge collapsed results
+    country_gdf = gaul_country_gdf.merge(collapsed_df, how='left', on='ADM0_NAME')
+
+    # Plot collapsed avoided_mortality (Blues)
+    fig, ax = plt.subplots(figsize=(8, 6))
+    country_gdf.plot(
+        column="avoided_mortality",
+        cmap="Blues",
+        linewidth=0.1,
+        edgecolor="black",
+        legend=True,
+        legend_kwds={"shrink": 0.4},
+        ax=ax
+    )
+    ax.set_title("Avoided Landslide Mortality 2019 (Country)", fontsize=12)
+    ax.set_axis_off()
+    plt.tight_layout()
+    out_path3 = os.path.join(p.cur_dir, f'avoided_mortality_{target_year}_country.png')
+    plt.savefig(out_path3, dpi=300)
+    plt.close(fig)
+
+    # Plot collapsed avoided_mortality_value_usd (Greens)
+    fig, ax = plt.subplots(figsize=(8, 6))
+    country_gdf.plot(
+        column="avoided_mortality_value_usd",
+        cmap="Greens",
+        linewidth=0.1,
+        edgecolor="black",
+        legend=True,
+        legend_kwds={"shrink": 0.4},
+        ax=ax
+    )
+    ax.set_title("Avoided Mortality Value (USD, 2019, Country)", fontsize=12)
+    ax.set_axis_off()
+    plt.tight_layout()
+    out_path4 = os.path.join(p.cur_dir, f'avoided_mortality_value_usd_{target_year}_country.png')
+    plt.savefig(out_path4, dpi=300)
+    plt.close(fig)
+
+    hb.log(f"Plots saved to:\n{out_path1}\n{out_path2}\n{out_path3}\n{out_path4}")
