@@ -3,6 +3,7 @@ title: "Overview of Ecosystem Service: Landslide Mitigation"
 format:
   html:
     embed-resources: true
+    code-fold: true
 jupyter: python3
 author:
   - name: Matt Braaksma
@@ -30,10 +31,12 @@ Building on the methodology outlined in [Brander et al.], we develop the first g
 From this data, a mortality function is estimated using:
 
 $$
-Mort_{it} = \beta_0 + \beta_1 SedTotal_{it} + \beta_2 SedMax_{it} + \beta_3 SedRange_{it} + \beta_4 PopTotal_{it} + \beta_5 PopMax_{it} + \beta_6 PopRange_{it} + \beta_7 PrecipTotal_{it} + \beta_8 PrecipMax_{it} + \beta_9 PrecipRange_{it} + \epsilon_{it}
+M_{it} = \beta_0 + \beta_1 ln(S_{it}) + \beta_2 ln(P_{it}) + \beta_3 ln(R_{it}) + \lambda_t + \epsilon_{it}
 $$
 
-where each variable is an administrative 2 region $i$ in year $t$. 
+where each $M_{it}$ is the count of landslide related mortalities, $ln(S_{it})$ is the sum of sediment export, $ln(P_{it})$ is the total population, $ln(R_{it})$ is the sum of total precipitation, and $\lambda_t$ is the year fixed effect. Each observation represents a regional unit $i$ at the adminsitrative level 2 designation in a given year $t \in [2000, 2020]$.
+
+observation is an administrative 2 region $i$ in year $t$. 
 
 Finally, using the coefficients from this function, we estimate avoided mortality in the desired year by taking predicted mortality under a counterfactual forest cover scenario less observed forest cover. 
 
@@ -44,30 +47,26 @@ To estimate the value of landslide mitigation, we employ a GDP-adjusted value of
 
 ## Results
 
-```{python}
-import os
-import pandas as pd
-import geopandas as gpd
-from utils.s3_utils import s3_handler
+![](../projects/global_results/intermediate/plot_results/avoided_mortality_2019_adm2.png)
 
-# Load borders
-with s3_handler.temp_workspace("combine_zonal_stats") as temp_dir:
-    # Download and load GAUL data for ID mapping
-    gaul_s3_path = "Files/base_data/gep_landslides/emdat/gaul2014_2015.gpkg"
-    local_gaul = s3_handler.download_to_temp(gaul_s3_path, "gaul.gpkg")
-    
-    # Load GAUL data and create FID to ID mapping
-    gaul_gdf = gpd.read_file(local_gaul, layer='level2')
-    gaul_gdf = gaul_gdf.reset_index(drop=True)
+![](../projects/global_results/intermediate/plot_results/avoided_mortality_2019_country.png)
 
-# Load results
-results_path = os.path.join('..', 'projects', 'global_results', 'intermediate', 'compute_avoided_mortality', 'avoided_mortality_results_2019.csv')
-results_df = pd.read_csv(results_path)
+![](../projects/global_results/intermediate/plot_results/avoided_mortality_value_usd_2019_adm2.png)
 
-# Merge
-results_gdf = gaul_gdf.merge(results_df, how='left', on='ADM2_CODE')
-# results_gdf.explore('avoided_mortality')
-results_gdf.plot('avoided_mortality')
-```
+![](../projects/global_results/intermediate/plot_results/avoided_mortality_value_usd_2019_country.png)
+
+## Data 
+
+| Data 	| Source   	|
+|---	|---	|
+| LULC | ESA-CCI |
+| Population | WorldPop  	|
+| Landslide Mortality 	| EM-DAT - The international disaster database  	| 
+| Admin 2 Borders (linked to EM-DAT) | FAO GAUL 2015 |
+| Precipitation | MODIS ERA5 |
+
+<!-- TODO: add SDR inputs (basins, alt, soil) -->
+
 
 # References
+
