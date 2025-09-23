@@ -4,6 +4,7 @@ format:
   html:
     embed-resources: true
     code-fold: true
+    number-sections: true
 jupyter: python3
 author:
   - name: Matt Braaksma
@@ -16,8 +17,83 @@ author:
     email: braak014@umn.edu
     url: https://m-braaksma.github.io/
 abstract: |
+bibliography: ./data/ref.bib
 ---
 
+## Description
+
+Landslide mitigation represents a critical regulating ecosystem service provided by forests through slope stabilization and erosion control. Forests reduce landslide risk through multiple mechanisms: root systems bind soil particles together, canopy cover reduces surface erosion from precipitation, and vegetation slows water infiltration rates. This ecosystem service is particularly valuable in mountainous and hilly regions where human populations are exposed to landslide hazards. Our analysis quantifies this service specifically in terms of avoided landslide mortality, measuring how forest cover prevents human fatalities that would otherwise occur due to landslide events.
+
+## Methods
+
+Building on the methodology outlined in [@brander2018mapping], we develop the first global methodology to quantify avoided landslide mortality in a given year. Our approach integrates multiple datasets to construct a comprehensive understanding of landslide risk factors and forest protection effects.
+
+### Data Sources and Variables {.unnumbered}
+
+| Data | Source | Variable Description |
+|------|--------|---------------------|
+| LULC | ESA-CCI [@ESA2017LandCoverCCI] | Land use/land cover including forest extent |
+| Population | WorldPop [@WorldPopUnconstrainedGlobalMosaics2000_2020] | Gridded population data accounting for human exposure |
+| Landslide Mortality | EM-DAT - The international disaster database | Annual records of landslide-related fatalities |
+| Admin 2 Borders | FAO GAUL 2015 | Administrative boundaries linked to EM-DAT |
+| Precipitation | MODIS ERA5 | Annual precipitation data for weather variation |
+| Value of Statistical Life (VSL) | USDOT | GDP-adjusted VSL for economic valuation |
+| SDR inputs | NatCap TEEMs | Basins, elevation, soil data for sediment export modeling |
+
+### Analytical Approach{.unnumbered}
+
+We construct a historic panel dataset at the administrative-2 level combining mortality data from EM-DAT with sediment export estimates from InVEST's SDR model, which incorporates forest cover effects. The analysis accounts for population exposure using WorldPop data and weather variability through ERA5 precipitation records.
+
+From this integrated dataset, we estimate a mortality function using:
+
+$$M_{it} = \beta_0 + \beta_1 ln(S_{it}) + \beta_2 ln(P_{it}) + \beta_3 ln(R_{it}) + \lambda_t + \epsilon_{it}$$
+
+where:
+- $M_{it}$ = count of landslide-related mortalities in region $i$ at time $t$
+- $ln(S_{it})$ = natural log of sediment export sum
+- $ln(P_{it})$ = natural log of total population
+- $ln(R_{it})$ = natural log of total precipitation
+- $\lambda_t$ = year fixed effects
+- $\epsilon_{it}$ = error term
+
+Each observation represents an administrative-2 region $i$ in year $t \in [2000, 2020]$.
+
+### Valuation Method {.unnumbered}
+
+To estimate the economic value of landslide mitigation, we employ a GDP-adjusted Value of Statistical Life (VSL) approach. Using the estimated coefficients from the mortality function, we calculate avoided mortality by comparing predicted mortality under a counterfactual scenario (without forest cover) to the observed scenario (with current forest cover). The difference in mortality is then valued using country-specific VSL estimates.
+
+## Validation
+
+>in progress...
+
+## Results
+
+### Tables {.unnumbered}
+```{python}
+import pandas as pd
+from IPython.display import display, Markdown
+df = pd.read_csv('../projects/global_results/intermediate/compute_value/gdp_adjusted_value_2019_ee.csv')
+display(Markdown(df.to_markdown()))
+```
+
+### Figures {.unnumbered}
+
+![Avoided Mortality 2019 - Administrative Level 2](../projects/global_results/intermediate/plot_results/avoided_mortality_2019_adm2.png)
+
+![Avoided Mortality 2019 - Country Level](../projects/global_results/intermediate/plot_results/avoided_mortality_2019_country.png)
+
+![Economic Value of Avoided Mortality 2019 - Administrative Level 2](../projects/global_results/intermediate/plot_results/avoided_mortality_value_usd_2019_adm2.png)
+
+![Economic Value of Avoided Mortality 2019 - Country Level](../projects/global_results/intermediate/plot_results/avoided_mortality_value_usd_2019_country.png)
+
+
+## References
+
+::: {#refs}
+:::
+
+
+<!-- 
 This section outlines how we value landslide mitigation as an ecosystem service within the GEP framework. The analysis focuses specifically on avoided landslide mortality provided by the presence of forests.  
 
 
@@ -55,6 +131,14 @@ To estimate the value of landslide mitigation, we employ a GDP-adjusted value of
 
 ![](../projects/global_results/intermediate/plot_results/avoided_mortality_value_usd_2019_country.png)
 
+```{python}
+import pandas as pd
+from IPython.display import display, Markdown
+
+df = pd.read_csv('../projects/global_results/intermediate/compute_value/gdp_adjusted_value_2019_ee.csv')
+display(Markdown(df.to_markdown()))
+```
+
 ## Data 
 
 | Data 	| Source   	|
@@ -64,9 +148,9 @@ To estimate the value of landslide mitigation, we employ a GDP-adjusted value of
 | Landslide Mortality 	| EM-DAT - The international disaster database  	| 
 | Admin 2 Borders (linked to EM-DAT) | FAO GAUL 2015 |
 | Precipitation | MODIS ERA5 |
+| Value of a Statistical Life (VSL) | USDOT |
+| SDR inputs (basins, alt, soil) | NatCap TEEMs |
 
-<!-- TODO: add SDR inputs (basins, alt, soil) -->
 
-
-# References
+# References -->
 
