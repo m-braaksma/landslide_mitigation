@@ -1,46 +1,118 @@
 ---
-title: "Overview of Ecosystem Service: Landslide Mitigation"
+title: "Overview of Ecosystem Service: Landslide Regulation"
 format:
   html:
     embed-resources: true
-    code-fold: true
     number-sections: true
+    author:
+    - name: Matt Braaksma
+      affiliations:
+        - name: University of Minnesota
+          department: Department of Applied Economics
+          country: USA
+      email: braak014@umn.edu
+      url: https://m-braaksma.github.io/
+  docx:
+    toc: false
+    number-sections: true
+    reference-doc: ref_times_new_roman.docx
+execute:
+  echo: false
 jupyter: python3
-author:
-  - name: Matt Braaksma
-    affiliations:
-      - name: University of Minnesota
-        department: Department of Applied Economics
-        address:
-        city:
-        country: USA
-    email: braak014@umn.edu
-    url: https://m-braaksma.github.io/
 abstract: |
+  This study develops the first global methodology to quantify landslide regulation as an ecosystem service, focusing on avoided human mortality. Using a coupled modeling approach that integrates sediment export modeling, historical landslide data, and population exposure assessment, we estimate the economic value of landslide prevention provided by natural forest vegetation. Our framework links land use decisions to mortality impacts through the InVEST Sediment Delivery Ratio model and empirical mortality functions derived from the Emergency Events Database.
 bibliography: ./data/ref.bib
 ---
 
+<!-- Inline CSS -->
+<style>
+/* center the image container */
+.figure, figure {
+  text-align: center;
+}
+
+/* cover the common caption selectors Quarto/ Pandoc might produce */
+.figure .caption,
+.figure-caption,
+figcaption,
+.caption,
+.figure p {
+  text-align: center !important;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
+```{python}
+#| label: imports
+import pandas as pd
+from IPython.display import display, Markdown, Image
+```
+
 ## Description
 
-Landslide mitigation represents a critical regulating ecosystem service provided by forests through slope stabilization and erosion control. Forests reduce landslide risk through multiple mechanisms: root systems bind soil particles together, canopy cover reduces surface erosion from precipitation, and vegetation slows water infiltration rates. This ecosystem service is particularly valuable in mountainous and hilly regions where human populations are exposed to landslide hazards. Our analysis quantifies this service specifically in terms of avoided landslide mortality, measuring how forest cover prevents human fatalities that would otherwise occur due to landslide events.
+Landslide regulation represents a critical regulating ecosystem service provided by forests through slope stabilization and erosion control. Forests reduce landslide risk through multiple mechanisms: root systems bind soil particles together, canopy cover reduces surface erosion from precipitation, and vegetation slows water infiltration rates. This ecosystem service is particularly valuable in mountainous and hilly regions where human populations are exposed to landslide hazards. 
+
+Our framework centers on estimating the human death toll from landslides to assign a monetary value to landslide prevention provided by natural vegetation. We recognize other benefits of landslide regulation that have measurable value, such as reduced infrastructure damage or prevented agricultural losses, but focus on deaths because they represent the most significant cost of landslide hazards. Our analysis quantifies this service specifically in terms of avoided landslide mortality, measuring how forest cover prevents human fatalities that would otherwise occur due to landslide events.
 
 ## Methods
 
-Building on the methodology outlined in [@brander2018mapping], we develop the first global methodology to quantify avoided landslide mortality in a given year. Our approach integrates multiple datasets to construct a comprehensive understanding of landslide risk factors and forest protection effects.
+Building on the methodology outlined in [@brander2018mapping], we develop a three-step modeling approach to estimate how changes in land use affect human health through changes in landslide risk. The approach couples models of sediment export, landslide occurrence, and mortality outcomes to link land use decisions to mortality impacts. The framework consists of three linked components: the InVEST Sediment Delivery Ratio (SDR) model, which estimates how changes in land use affect sediment export and erosion processes; a mortality function that relates sediment export to historical landslide deaths; and an approach to estimating health impacts that quantifies how changes in landslide risk affect population exposure and mortality.
 
-### Data Sources and Variables {.unnumbered}
+### Data Sources and Variables
 
 | Data | Source | Variable Description |
 |------|--------|---------------------|
 | LULC | ESA-CCI [@ESA2017LandCoverCCI] | Land use/land cover including forest extent |
 | Population | WorldPop [@WorldPopUnconstrainedGlobalMosaics2000_2020] | Gridded population data accounting for human exposure |
-| Landslide Mortality | EM-DAT - The international disaster database | Annual records of landslide-related fatalities |
-| Admin 2 Borders | FAO GAUL 2015 | Administrative boundaries linked to EM-DAT |
-| Precipitation | MODIS ERA5 | Annual precipitation data for weather variation |
-| Value of Statistical Life (VSL) | USDOT | GDP-adjusted VSL for economic valuation |
+| Landslide Mortality | EM-DAT - The international disaster database [@Delforge2025EMDAT] | Annual records of landslide-related fatalities |
+| Admin 2 Borders | FAO GAUL 2015 [@FAO2015GAUL] | Administrative boundaries linked to EM-DAT |
+| Precipitation | ERA5 [@Hersbach2023ERA5] | Annual precipitation data for weather variation |
+| Value of Statistical Life (VSL) | USDOT [@USDOT2025VSL] | GDP-adjusted VSL for economic valuation |
 | SDR inputs | NatCap TEEMs | Basins, elevation, soil data for sediment export modeling |
 
-### Analytical Approach{.unnumbered}
+### Sediment Export Modeling
+
+We used the InVEST Sediment Delivery Ratio (SDR) model to estimate sediment export, which serves as a proxy for landslide risk. The SDR model is a spatially explicit tool that maps soil erosion and sediment delivery to streams based on the Revised Universal Soil Loss Equation (RUSLE) framework. The model operates in two main steps:
+
+**Step 1: Soil Erosion Estimation**  
+We estimated soil loss on each pixel using the RUSLE equation: 
+$$USLE = LS \times R \times K \times C \times P$$
+
+Where:
+
+- $LS$: Slope length and steepness factor, derived from digital elevation model (DEM)
+- $R$: Rainfall erosivity factor, representing the erosive power of precipitation  
+- $K$: Soil erodibility factor, indicating the susceptibility of soil particles to detachment
+- $C$: Vegetation cover factor, reflecting the protective effect of vegetation
+- $P$: Conservation practices factor, accounting for erosion control measures
+
+**Step 2: Sediment Delivery Ratio Calculation**  
+For each pixel, we calculated how much eroded sediment actually reaches streams using the Sediment Delivery Ratio (SDR): 
+$$Sediment\ Export = USLE \times SDR$$
+
+The SDR is calculated based on land cover characteristics and the degree of hydrological connectivity between upslope areas and streams. Areas with dense vegetation have lower SDR values due to their capacity to trap sediment, while areas with sparse vegetation or high connectivity have higher SDR values.
+
+**Input Data Requirements:**
+
+- Digital elevation model (DEM)
+- Rainfall erosivity raster derived from precipitation data
+- Soil erodibility raster from soil surveys
+- Land use/land cover raster classification
+- Watersheds shapefile for hydrological routing
+- Biophysical table assigning C and P factor values to different land use classes
+
+### Mortality Function Development
+
+We developed an empirical relationship between sediment export and landslide mortality using historical data. The mortality function links sediment export rates (as estimated by the SDR model) to observed landslide deaths, allowing us to predict mortality risk under different land use scenarios.
+
+**Historical Landslide Death Data**: We compiled historical landslide mortality data from the Emergency Events Database (EM-DAT), which provides comprehensive records of natural disasters and their impacts. The database includes information on landslide events, casualties, and affected populations at national and subnational scales.
+
+**Population Exposure Assessment**: We used gridded population data from the WorldPop dataset to estimate population exposure to landslide risk. The WorldPop dataset provides population counts at high spatial resolution (approximately 1 km at the equator) for 2000-2020.
+
+**Precipitation Assessment**: We used gridded monthly precipitation data from the Copernicus Climate Change Service's ERA5 dataset to control for the impact of precipitation on landslide risk. The ERA5 dataset provides monthly averaged precipitation levels at a resolution of 0.25 degrees for 2000-2020.
+
+### Analytical Approach
 
 We construct a historic panel dataset at the administrative-2 level combining mortality data from EM-DAT with sediment export estimates from InVEST's SDR model, which incorporates forest cover effects. The analysis accounts for population exposure using WorldPop data and weather variability through ERA5 precipitation records.
 
@@ -49,6 +121,7 @@ From this integrated dataset, we estimate a mortality function using:
 $$M_{it} = \beta_0 + \beta_1 ln(S_{it}) + \beta_2 ln(P_{it}) + \beta_3 ln(R_{it}) + \lambda_t + \epsilon_{it}$$
 
 where:
+
 - $M_{it}$ = count of landslide-related mortalities in region $i$ at time $t$
 - $ln(S_{it})$ = natural log of sediment export sum
 - $ln(P_{it})$ = natural log of total population
@@ -56,11 +129,21 @@ where:
 - $\lambda_t$ = year fixed effects
 - $\epsilon_{it}$ = error term
 
-Each observation represents an administrative-2 region $i$ in year $t \in [2000, 2020]$.
+Each observation represents an administrative-2 region $i$ in year $t \in [2000, 2020]$. The function is estimated using a generalised Poisson loglinear model since the dependent variable is count data; sediment export is treated as the primary predictor while controlling for population density and precipitation patterns that influence landslide susceptibility. 
 
-### Valuation Method {.unnumbered}
+### Estimating Avoided Mortality
 
-To estimate the economic value of landslide mitigation, we employ a GDP-adjusted Value of Statistical Life (VSL) approach. Using the estimated coefficients from the mortality function, we calculate avoided mortality by comparing predicted mortality under a counterfactual scenario (without forest cover) to the observed scenario (with current forest cover). The difference in mortality is then valued using country-specific VSL estimates.
+To measure the economic value of avoided landslide deaths, we estimate the mortality function parameters for 2000-2020. For 2019, the year of interest, we use those coefficients to estimate the predicted mortality using two scenarios: 
+
+1. SDR values based on observed LULC maps, and 
+2. SDR values based on LULC maps where the sediment retention properties of forest have been reduced to zero.
+    - Specifically, the C factor in the SDR model is set reduced to the same level as urban
+
+This allows for a comparison between predicted mortality under observed conditions and predicted mortality under counterfactual conditions. The difference represents avoided mortality due to forest cover.
+
+### Valuation Method
+
+To estimate the economic value of landslide regulation, we employ a GDP-adjusted Value of Statistical Life (VSL) approach. Country adjusted VSL amounts are estimated for each country based on the total avoided mortality estimates, aligning with other VSL calculations used in GEP estimates. Using the estimated coefficients from the mortality function, we calculate avoided mortality by comparing predicted mortality under a counterfactual scenario (without forest cover) to the observed scenario (with current forest cover). The difference in mortality is then valued using country-specific VSL estimates.
 
 ## Validation
 
@@ -68,89 +151,119 @@ To estimate the economic value of landslide mitigation, we employ a GDP-adjusted
 
 ## Results
 
-### Tables {.unnumbered}
 ```{python}
-import pandas as pd
-from IPython.display import display, Markdown
-df = pd.read_csv('../projects/global_results/intermediate/compute_value/gdp_adjusted_value_2019_ee.csv')
-display(Markdown(df.to_markdown()))
+#| label: display-fns
+
+# Paths to viz
+tbl_path = '../projects/global_results/intermediate/compute_value/gdp_adjusted_value_2019_ee.csv'
+fig_avoided_mortality_2019_adm2_path = '../projects/global_results/intermediate/plot_results/avoided_mortality_2019_adm2.png'
+fig_avoided_mortality_2019_country_path = '../projects/global_results/intermediate/plot_results/avoided_mortality_2019_country.png'
+fig_value_2019_adm2_path = '../projects/global_results/intermediate/plot_results/avoided_mortality_value_usd_2019_adm2.png'
+fig_value_2019_country_path = '../projects/global_results/intermediate/plot_results/avoided_mortality_value_usd_2019_country.png'
+
+# Helper functions
+def show_table(path):
+    df = pd.read_csv(path)
+    df = df[['ee_r264_name', 'avoided_mortality', 'avoided_mortality_value_usd']]
+    df = df.rename(columns={
+      'ee_r264_name': 'Country (ee_r264_name)',
+      'avoided_mortality': 'Avoided Mortality',
+      'avoided_mortality_value_usd': 'Avoided Mortality Value USD'
+    })
+    display(Markdown(df.to_markdown(index=False)))
+
+def show_fig(path, caption=None):
+    display(Image(path))
 ```
 
-### Figures {.unnumbered}
+<!-- HTML formatting -->
+::: {.content-visible when-format="html"}
+::: {.callout-note appearance="minimal" collapse=true}
+## Tables
 
-![Avoided Mortality 2019 - Administrative Level 2](../projects/global_results/intermediate/plot_results/avoided_mortality_2019_adm2.png)
+```{python}
+#| label: tbl-results-html
+#| tbl-cap: Results by Country 2019
+show_table(tbl_path)
+```
 
-![Avoided Mortality 2019 - Country Level](../projects/global_results/intermediate/plot_results/avoided_mortality_2019_country.png)
+:::
 
-![Economic Value of Avoided Mortality 2019 - Administrative Level 2](../projects/global_results/intermediate/plot_results/avoided_mortality_value_usd_2019_adm2.png)
+::: {.callout-note appearance="minimal" collapse=true}
+## Figures
 
-![Economic Value of Avoided Mortality 2019 - Country Level](../projects/global_results/intermediate/plot_results/avoided_mortality_value_usd_2019_country.png)
+```{python}
+#| label: fig-avoided-mortality-2019-adm2-html
+#| fig-cap: "Avoided Mortality 2019 — Administrative Level 2"
+show_fig(fig_avoided_mortality_2019_adm2_path)
+```
 
+<br>
+
+```{python}
+#| label: fig-avoided-mortality-2019-country-html
+#| fig-cap: "Avoided Mortality 2019 — Country Level"
+show_fig(fig_avoided_mortality_2019_country_path)
+```
+
+<br>
+
+```{python}
+#| label: fig-value-2019-adm2-html
+#| fig-cap: "Economic Value of Avoided Mortality 2019 - Administrative Level 2"
+show_fig(fig_value_2019_adm2_path)
+```
+
+<br>
+
+```{python}
+#| label: fig-value-2019-country-html
+#| fig-cap: "Economic Value of Avoided Mortality 2019 - Country Level"
+show_fig(fig_value_2019_country_path)
+```
+
+:::
+::: 
+
+<!-- DOCX formatting -->
+::: {.content-visible when-format="docx"}
+### Tables
+
+```{python}
+#| label: tbl-results-docx
+#| tbl-cap: Results by Country 2019
+show_table(tbl_path)
+```
+
+### Figures
+
+```{python}
+#| label: fig-avoided-mortality-2019-adm2-docx
+#| fig-cap: "Avoided Mortality 2019 — Administrative Level 2"
+show_fig(fig_avoided_mortality_2019_adm2_path)
+```
+
+```{python}
+#| label: fig-avoided-mortality-2019-country-docx
+#| fig-cap: "Avoided Mortality 2019 — Country Level"
+show_fig(fig_avoided_mortality_2019_country_path)
+```
+
+```{python}
+#| label: fig-value-2019-adm2-docx
+#| fig-cap: "Economic Value of Avoided Mortality 2019 - Administrative Level 2"
+show_fig(fig_value_2019_adm2_path)
+```
+
+```{python}
+#| label: fig-value-2019-country-docx
+#| fig-cap: "Economic Value of Avoided Mortality 2019 - Country Level"
+show_fig(fig_value_2019_country_path)
+```
+
+:::
 
 ## References
 
 ::: {#refs}
 :::
-
-
-<!-- 
-This section outlines how we value landslide mitigation as an ecosystem service within the GEP framework. The analysis focuses specifically on avoided landslide mortality provided by the presence of forests.  
-
-
-# Methods
-
-
-## Estimating Quantity
-
-Building on the methodology outlined in [Brander et al.], we develop the first global methodology to quantify avoided landslide mortality in a given year. To estimate the quantity of deaths caused by landslides, we start by constructing a historic panel dataset. Mortality data is sourced from the Emergency Events Database (EM-DAT), which provides annual records of landslide-related fatalities at the administrative 2 level. The other key data source is the sediment export based on InVEST's SDR model, which accounts for forest cover. Also included is gridded population data from WorldPop, which accounts for the fact that mortality only occurs where people reside. Finally, ERA5 precipitation data is included to account for annual variation in weather, which may also impact landslides. These data are combined to create an annual admin-2 level dataset. 
-
-From this data, a mortality function is estimated using:
-
-$$
-M_{it} = \beta_0 + \beta_1 ln(S_{it}) + \beta_2 ln(P_{it}) + \beta_3 ln(R_{it}) + \lambda_t + \epsilon_{it}
-$$
-
-where each $M_{it}$ is the count of landslide related mortalities, $ln(S_{it})$ is the sum of sediment export, $ln(P_{it})$ is the total population, $ln(R_{it})$ is the sum of total precipitation, and $\lambda_t$ is the year fixed effect. Each observation represents a regional unit $i$ at the adminsitrative level 2 designation in a given year $t \in [2000, 2020]$.
-
-observation is an administrative 2 region $i$ in year $t$. 
-
-Finally, using the coefficients from this function, we estimate avoided mortality in the desired year by taking predicted mortality under a counterfactual forest cover scenario less observed forest cover. 
-
-
-## Valuation
-
-To estimate the value of landslide mitigation, we employ a GDP-adjusted value of a staistical life (VSL). 
-
-## Results
-
-![](../projects/global_results/intermediate/plot_results/avoided_mortality_2019_adm2.png)
-
-![](../projects/global_results/intermediate/plot_results/avoided_mortality_2019_country.png)
-
-![](../projects/global_results/intermediate/plot_results/avoided_mortality_value_usd_2019_adm2.png)
-
-![](../projects/global_results/intermediate/plot_results/avoided_mortality_value_usd_2019_country.png)
-
-```{python}
-import pandas as pd
-from IPython.display import display, Markdown
-
-df = pd.read_csv('../projects/global_results/intermediate/compute_value/gdp_adjusted_value_2019_ee.csv')
-display(Markdown(df.to_markdown()))
-```
-
-## Data 
-
-| Data 	| Source   	|
-|---	|---	|
-| LULC | ESA-CCI |
-| Population | WorldPop  	|
-| Landslide Mortality 	| EM-DAT - The international disaster database  	| 
-| Admin 2 Borders (linked to EM-DAT) | FAO GAUL 2015 |
-| Precipitation | MODIS ERA5 |
-| Value of a Statistical Life (VSL) | USDOT |
-| SDR inputs (basins, alt, soil) | NatCap TEEMs |
-
-
-# References -->
-
