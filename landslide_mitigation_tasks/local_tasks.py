@@ -1109,6 +1109,22 @@ def compute_value(p, target_year=2019):
     value_results_path = os.path.join(p.cur_dir, f'gdp_adjusted_value_{target_year}.csv')
     results_gdp.to_csv(value_results_path, index=False)
 
+    # Aggregate to ee_r264
+    ee_path = os.path.join('.', 'data', 'ee_r264_correspondence.gpkg')
+    ee_df = gpd.read_file(ee_path, ignore_geometry=True)
+    ee_df = ee_df[['ee_r264_id', 'ee_r264_label', 'ee_r264_name', 'iso3']]
+    results_ee = results_gdp.merge(ee_df, left_on='iso3_code', right_on='iso3', how='left')
+    print("Countries in results not matched to ee_r264:", set(results_gdp['iso3_code']) - set(ee_df['iso3']))
+    results_ee_agg = results_ee.groupby('ee_r264_id').agg({
+        'avoided_mortality': 'sum',
+        'avoided_mortality_value_usd': 'sum',
+        'ee_r264_label': 'first',
+        'ee_r264_name': 'first',
+        'iso3': 'first'
+    }).reset_index()
+    results_path = os.path.join(p.cur_dir, f'gdp_adjusted_value_{target_year}_ee.csv')
+    results_ee_agg.to_csv(results_path, index=False)
+
 def plot_results(p, target_year=2019):
     # # Load borders
     # with s3_handler.temp_workspace("combine_zonal_stats") as temp_dir:
@@ -1147,15 +1163,29 @@ def plot_results(p, target_year=2019):
     # out_path = os.path.join(p.cur_dir, 'avoided_mortality_2019.png')
     # plt.savefig(out_path, dpi=300)
 
+    plot_titles = False
 
     # Define paths
     gaul_s3_path = "Files/base_data/gep_landslides/emdat/gaul2014_2015.gpkg"
     results_path = os.path.join(p.compute_value_dir, f'gdp_adjusted_value_{target_year}.csv')
 
+    # Define output paths
+    out_path_mort_adm2 = os.path.join(p.cur_dir, f'avoided_mortality_{target_year}_adm2.png')
+    out_path_val_adm2 = os.path.join(p.cur_dir, f'avoided_mortality_value_usd_{target_year}_adm2.png')
+    out_path_mort_adm0 = os.path.join(p.cur_dir, f'avoided_mortality_{target_year}_country.png')
+    out_path_val_adm0 = os.path.join(p.cur_dir, f'avoided_mortality_value_usd_{target_year}_country.png')
+
+    # Check if all outputs exist
+    all_exist = all(os.path.exists(path) for path in [out_path_mort_adm2, out_path_val_adm2, out_path_mort_adm0, out_path_val_adm0])
+    if all_exist:
+        hb.log("All plot outputs already exist. Skipping plot_results.")
+        return
+
     # Check for required files
     if not os.path.exists(results_path):
         hb.log(f"Missing results file: {results_path}", level=40)
         return
+    
     # Download and check GAUL file
     with s3_handler.temp_workspace("plot_results") as temp_dir:
         local_gaul = s3_handler.download_to_temp(gaul_s3_path, "gaul.gpkg")
@@ -1174,7 +1204,7 @@ def plot_results(p, target_year=2019):
     results_gdf = gaul_gdf.merge(results_df, how='left', on='ADM2_CODE')
 
     # Plot avoided_mortality (Blues)
-    fig, ax = plt.subplots(figsize=(8, 6))
+    fig, ax = plt.subplots(figsize=(12, 6))
     results_gdf.plot(
         column="avoided_mortality",
         cmap="Blues",
@@ -1184,15 +1214,15 @@ def plot_results(p, target_year=2019):
         legend_kwds={"shrink": 0.4},
         ax=ax
     )
-    ax.set_title("Avoided Landslide Mortality 2019 (ADM2)", fontsize=12)
+    if plot_titles:
+        ax.set_title("Avoided Landslide Mortality 2019 (ADM2)", fontsize=12)
     ax.set_axis_off()
     plt.tight_layout()
-    out_path1 = os.path.join(p.cur_dir, f'avoided_mortality_{target_year}_adm2.png')
-    plt.savefig(out_path1, dpi=300)
+    plt.savefig(out_path_mort_adm2, dpi=300, bbox_inches='tight')
     plt.close(fig)
 
     # Plot avoided_mortality_value_usd (Greens)
-    fig, ax = plt.subplots(figsize=(8, 6))
+    fig, ax = plt.subplots(figsize=(12, 6))
     results_gdf.plot(
         column="avoided_mortality_value_usd",
         cmap="Greens",
@@ -1202,11 +1232,11 @@ def plot_results(p, target_year=2019):
         legend_kwds={"shrink": 0.4},
         ax=ax
     )
-    ax.set_title("Avoided Mortality Value (USD, 2019, ADM2)", fontsize=12)
+    if plot_titles:
+        ax.set_title("Avoided Mortality Value (USD, 2019, ADM2)", fontsize=12)
     ax.set_axis_off()
     plt.tight_layout()
-    out_path2 = os.path.join(p.cur_dir, f'avoided_mortality_value_usd_{target_year}_adm2.png')
-    plt.savefig(out_path2, dpi=300)
+    plt.savefig(out_path_val_adm2, dpi=300, bbox_inches='tight')
     plt.close(fig)
 
     # Collapse by ADM0_NAME (country)
@@ -1222,7 +1252,7 @@ def plot_results(p, target_year=2019):
     country_gdf = gaul_country_gdf.merge(collapsed_df, how='left', on='ADM0_NAME')
 
     # Plot collapsed avoided_mortality (Blues)
-    fig, ax = plt.subplots(figsize=(8, 6))
+    fig, ax = plt.subplots(figsize=(12, 6))
     country_gdf.plot(
         column="avoided_mortality",
         cmap="Blues",
@@ -1232,15 +1262,15 @@ def plot_results(p, target_year=2019):
         legend_kwds={"shrink": 0.4},
         ax=ax
     )
-    ax.set_title("Avoided Landslide Mortality 2019 (Country)", fontsize=12)
+    if plot_titles:
+        ax.set_title("Avoided Landslide Mortality 2019 (Country)", fontsize=12)
     ax.set_axis_off()
     plt.tight_layout()
-    out_path3 = os.path.join(p.cur_dir, f'avoided_mortality_{target_year}_country.png')
-    plt.savefig(out_path3, dpi=300)
+    plt.savefig(out_path_mort_adm0, dpi=300, bbox_inches='tight')
     plt.close(fig)
 
     # Plot collapsed avoided_mortality_value_usd (Greens)
-    fig, ax = plt.subplots(figsize=(8, 6))
+    fig, ax = plt.subplots(figsize=(12, 6))
     country_gdf.plot(
         column="avoided_mortality_value_usd",
         cmap="Greens",
@@ -1250,11 +1280,11 @@ def plot_results(p, target_year=2019):
         legend_kwds={"shrink": 0.4},
         ax=ax
     )
-    ax.set_title("Avoided Mortality Value (USD, 2019, Country)", fontsize=12)
+    if plot_titles:
+        ax.set_title("Avoided Mortality Value (USD, 2019, Country)", fontsize=12)
     ax.set_axis_off()
     plt.tight_layout()
-    out_path4 = os.path.join(p.cur_dir, f'avoided_mortality_value_usd_{target_year}_country.png')
-    plt.savefig(out_path4, dpi=300)
+    plt.savefig(out_path_val_adm0, dpi=300, bbox_inches='tight')
     plt.close(fig)
 
-    hb.log(f"Plots saved to:\n{out_path1}\n{out_path2}\n{out_path3}\n{out_path4}")
+    hb.log(f"Plots saved to:\n{out_path_mort_adm2}\n{out_path_val_adm2}\n{out_path_mort_adm0}\n{out_path_val_adm0}")
