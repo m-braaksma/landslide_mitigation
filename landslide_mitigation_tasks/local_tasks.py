@@ -1,5 +1,7 @@
 import os
 import sys
+
+from yaml import warnings
 import hazelbean as hb
 from pathlib import Path
 import numpy as np
@@ -232,70 +234,137 @@ def preprocess_aligned_rasters(p):
     hb.log('preprocess_aligned_rasters complete.')
 
 def tile_zones(p):
-    """
-    Generate list of tile boundaries for processing
-    Saves blocks_list.csv with tile definitions
-    This is the ITERATOR that creates the zones
-    """
     if p.run_this:
-        hb.log('Creating tile list from input raster...')
-        
-        # Get raster info
-        raster_path = os.path.join(p.s3_proj_dir, 'aligned_rasters', 'avoided_export_2020.tif')
-        ds = gdal.Open(raster_path)
-        n_cols = ds.RasterXSize
-        n_rows = ds.RasterYSize
-        geotransform = ds.GetGeoTransform()
-        ds = None
-        
-        # Calculate tile dimensions
-        p.tile_size = p.processing_resolution  # pixels per tile dimension
-        
-        # Generate tile boundaries
-        blocks_list = []
-        for row_offset in range(0, n_rows, p.tile_size):
-            for col_offset in range(0, n_cols, p.tile_size):
-                # Calculate actual tile size (handle edges)
-                actual_n_cols = min(p.tile_size, n_cols - col_offset)
-                actual_n_rows = min(p.tile_size, n_rows - row_offset)
-                
-                # Store as [col_offset, row_offset, n_cols, n_rows]
-                blocks_list.append([col_offset, row_offset, actual_n_cols, actual_n_rows])
-        
-        # Save to CSV
         blocks_list_path = os.path.join(p.cur_dir, 'blocks_list.csv')
-        hb.python_object_to_csv(blocks_list, blocks_list_path, '2d_list')
         
-        hb.log(f'Created {len(blocks_list)} tiles of max size {p.tile_size}x{p.tile_size}')
-        hb.log(f'Blocks list saved to: {blocks_list_path}')
+        # Check if blocks list already exists
+        if os.path.exists(blocks_list_path):
+            hb.log('Blocks list already exists, loading from file...')
+            blocks_df = pd.read_csv(blocks_list_path, header=None)
+            blocks_df.columns = ['col_offset', 'row_offset', 'n_cols', 'n_rows']
+            blocks_list = blocks_df.values.tolist()
+            hb.log(f'Loaded {len(blocks_list)} tiles from existing blocks_list.csv')
+        else:
+            hb.log('Creating tile list from input raster...')
+            
+            # Get raster info
+            raster_path = os.path.join(p.s3_proj_dir, 'aligned_rasters', 'avoided_export_2020.tif')
+            ds = gdal.Open(raster_path)
+            n_cols = ds.RasterXSize
+            n_rows = ds.RasterYSize
+            ds = None
+            
+            # Load land mask once
+            worldpop_2019 = os.path.join(p.s3_proj_dir, 'preprocessed_rasters', 'ppp_2019_1km_Aggregated_filled.tif')
+            ds = gdal.Open(worldpop_2019)
+            band = ds.GetRasterBand(1)
+            wp_ndv = band.GetNoDataValue()
+            
+            p.tile_size = p.processing_resolution
+            
+            # Generate tile boundaries, filtering out ocean-only tiles
+            blocks_list = []
+            for row_offset in range(0, n_rows, p.tile_size):
+                for col_offset in range(0, n_cols, p.tile_size):
+                    actual_n_cols = min(p.tile_size, n_cols - col_offset)
+                    actual_n_rows = min(p.tile_size, n_rows - row_offset)
+                    
+                    # Quick check: does tile have land?
+                    wp_tile = band.ReadAsArray(col_offset, row_offset, actual_n_cols, actual_n_rows)
+                    land_mask = np.isfinite(wp_tile)
+                    if wp_ndv is not None:
+                        if abs(wp_ndv) > 1e30:
+                            land_mask &= (wp_tile != wp_ndv)
+                    land_mask &= (wp_tile >= 0)
+                    
+                    if land_mask.sum() > 0:
+                        blocks_list.append([col_offset, row_offset, actual_n_cols, actual_n_rows])
+            
+            ds = None
+            
+            # Save blocks list
+            blocks_df = pd.DataFrame(blocks_list, columns=['col_offset', 'row_offset', 'n_cols', 'n_rows'])
+            blocks_df.to_csv(blocks_list_path, index=False, header=False)
+            hb.log(f'Created {len(blocks_list)} land tiles (filtered ocean tiles)')
+            hb.log(f'Blocks list saved to: {blocks_list_path}')
         
         # Setup iterator for next task
-        # The cur_dir_parent_dir defines where each tile's directory will be
-        # We use just the tile name (row_col) for clarity
-        # p.iterator_replacements = {
-        #     'tile_col_offset': [block[0] for block in blocks_list],
-        #     'tile_row_offset': [block[1] for block in blocks_list],
-        #     'tile_n_cols': [block[2] for block in blocks_list],
-        #     'tile_n_rows': [block[3] for block in blocks_list],
-        #     # Create tile-specific output directories
-        #     # Each tile gets: generate_tile_zones/row_col/
-        #     'cur_dir_parent_dir': [
-        #         p.cur_dir + '/' + f'{block[1]}_{block[0]}'
-        #         for block in blocks_list
-        #     ]
-        # }
-        # Store the TILE BASE directory that all children should branch from
         p.iterator_replacements = {
             'tile_col_offset': [block[0] for block in blocks_list],
             'tile_row_offset': [block[1] for block in blocks_list],
             'tile_n_cols': [block[2] for block in blocks_list],
             'tile_n_rows': [block[3] for block in blocks_list],
-            # This sets the base tile directory for ALL child tasks
             'cur_dir_parent_dir': [
                 os.path.join(p.cur_dir, f'{block[1]}_{block[0]}')
                 for block in blocks_list
             ]
         }
+
+# def tile_zones(p):
+#     """
+#     Generate list of tile boundaries for processing
+#     Saves blocks_list.csv with tile definitions
+#     This is the ITERATOR that creates the zones
+#     """
+#     if p.run_this:
+#         hb.log('Creating tile list from input raster...')
+        
+#         # Get raster info
+#         raster_path = os.path.join(p.s3_proj_dir, 'aligned_rasters', 'avoided_export_2020.tif')
+#         ds = gdal.Open(raster_path)
+#         n_cols = ds.RasterXSize
+#         n_rows = ds.RasterYSize
+#         geotransform = ds.GetGeoTransform()
+#         ds = None
+        
+#         # Calculate tile dimensions
+#         p.tile_size = p.processing_resolution  # pixels per tile dimension
+        
+#         # Generate tile boundaries
+#         blocks_list = []
+#         for row_offset in range(0, n_rows, p.tile_size):
+#             for col_offset in range(0, n_cols, p.tile_size):
+#                 # Calculate actual tile size (handle edges)
+#                 actual_n_cols = min(p.tile_size, n_cols - col_offset)
+#                 actual_n_rows = min(p.tile_size, n_rows - row_offset)
+                
+#                 # Store as [col_offset, row_offset, n_cols, n_rows]
+#                 blocks_list.append([col_offset, row_offset, actual_n_cols, actual_n_rows])
+        
+#         # Save to CSV
+#         blocks_list_path = os.path.join(p.cur_dir, 'blocks_list.csv')
+#         hb.python_object_to_csv(blocks_list, blocks_list_path, '2d_list')
+        
+#         hb.log(f'Created {len(blocks_list)} tiles of max size {p.tile_size}x{p.tile_size}')
+#         hb.log(f'Blocks list saved to: {blocks_list_path}')
+        
+#         # Setup iterator for next task
+#         # The cur_dir_parent_dir defines where each tile's directory will be
+#         # We use just the tile name (row_col) for clarity
+#         # p.iterator_replacements = {
+#         #     'tile_col_offset': [block[0] for block in blocks_list],
+#         #     'tile_row_offset': [block[1] for block in blocks_list],
+#         #     'tile_n_cols': [block[2] for block in blocks_list],
+#         #     'tile_n_rows': [block[3] for block in blocks_list],
+#         #     # Create tile-specific output directories
+#         #     # Each tile gets: generate_tile_zones/row_col/
+#         #     'cur_dir_parent_dir': [
+#         #         p.cur_dir + '/' + f'{block[1]}_{block[0]}'
+#         #         for block in blocks_list
+#         #     ]
+#         # }
+#         # Store the TILE BASE directory that all children should branch from
+#         p.iterator_replacements = {
+#             'tile_col_offset': [block[0] for block in blocks_list],
+#             'tile_row_offset': [block[1] for block in blocks_list],
+#             'tile_n_cols': [block[2] for block in blocks_list],
+#             'tile_n_rows': [block[3] for block in blocks_list],
+#             # This sets the base tile directory for ALL child tasks
+#             'cur_dir_parent_dir': [
+#                 os.path.join(p.cur_dir, f'{block[1]}_{block[0]}')
+#                 for block in blocks_list
+#             ]
+#         }
 
 # def tile_regression_and_prediction(p):
 #     """
@@ -458,19 +527,57 @@ def tile_regression_and_prediction(p):
                 continue
             
             # Valid mask
+            # Valid mask - CRITICAL: Order matters!
             valid_mask = np.ones((n_rows, n_cols), dtype=bool)
+
+            # STEP 1: Remove nodata pixels for each variable
             for name in ['gfld', 'sdr', 'era5', 'worldpop']:
-                ndv = ndvs[name]
                 arr = arrays[name]
-                if ndv is not None:
-                    atol = abs(ndv) * 1e-5 if ndv != 0 else 1e-10
-                    valid_mask &= ~np.isclose(arr, ndv, rtol=0, atol=atol)
+                ndv = ndvs[name]
+
+                # Remove non-finite (NaN, Inf)
+                before = valid_mask.sum()
                 valid_mask &= np.isfinite(arr)
+                if year == 2004:  # Log first year for debugging
+                    hb.log(f'    After isfinite({name}): {valid_mask.sum()} pixels (removed {before - valid_mask.sum()})')
+
+                # Remove nodata values
+                if ndv is not None:
+                    before = valid_mask.sum()
+                    if abs(ndv) > 1e30:  # Very large nodata (like ±3.4e38)
+                        valid_mask &= (arr != ndv)
+                    else:  # Normal nodata (like -9999)
+                        atol = abs(ndv) * 1e-5 if ndv != 0 else 1e-10
+                        valid_mask &= ~np.isclose(arr, ndv, rtol=0, atol=atol)
+                    if year == 2004:
+                        hb.log(f'    After removing ndv({name}): {valid_mask.sum()} pixels (removed {before - valid_mask.sum()})')
+
+            # STEP 2: Apply range checks ONLY on non-nodata pixels
+            before = valid_mask.sum()
             valid_mask &= (arrays['gfld'] >= 0)
+            if year == 2004:
+                hb.log(f'    After gfld >= 0: {valid_mask.sum()} pixels (removed {before - valid_mask.sum()})')
+
+            before = valid_mask.sum()
             valid_mask &= (arrays['worldpop'] >= 0)
-            
+            if year == 2004:
+                hb.log(f'    After worldpop >= 0: {valid_mask.sum()} pixels (removed {before - valid_mask.sum()})')
+
             n_valid_this_year = np.sum(valid_mask)
-            hb.log(f'  Year {year}: {n_valid_this_year} valid pixels')
+            hb.log(f'  Year {year}: {n_valid_this_year:,} valid pixels')
+            # valid_mask = np.ones((n_rows, n_cols), dtype=bool)
+            # for name in ['gfld', 'sdr', 'era5', 'worldpop']:
+            #     ndv = ndvs[name]
+            #     arr = arrays[name]
+            #     if ndv is not None:
+            #         atol = abs(ndv) * 1e-5 if ndv != 0 else 1e-10
+            #         valid_mask &= ~np.isclose(arr, ndv, rtol=0, atol=atol)
+            #     valid_mask &= np.isfinite(arr)
+            # valid_mask &= (arrays['gfld'] >= 0)
+            # valid_mask &= (arrays['worldpop'] >= 0)
+            
+            # n_valid_this_year = np.sum(valid_mask)
+            # hb.log(f'  Year {year}: {n_valid_this_year} valid pixels')
             
             if n_valid_this_year == 0:
                 continue
@@ -541,6 +648,7 @@ def tile_regression_and_prediction(p):
         
         # Logistic regression
         binary_y = (panel_df['gfld'] > 0).astype(int)
+        hb.log('About to fit logistic regression')
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter('ignore')
@@ -1166,6 +1274,42 @@ def _nodata_mask(arr, ndv):
 #     del sdr_arr, era5_arr, worldpop_arr, out_arr
 #     gc.collect()
 
+# def aggregate_damage_results(p):
+#     """
+#     Aggregate damage function results from all tiles into single summary.
+#     """
+#     if p.run_this:
+#         hb.log('Aggregating damage function results from all tiles...')
+
+#         output_path = os.path.join(p.cur_dir, 'all_tiles_damage_function_results.csv')
+#         if os.path.exists(output_path):
+#             hb.log(f'Combined results already exist at {output_path}, skipping aggregation')
+#             return
+
+#         tiles_parent_dir = p.tile_zones_dir
+#         if not os.path.exists(tiles_parent_dir):
+#             hb.log(f'Warning: Tiles directory not found: {tiles_parent_dir}')
+#             return
+
+#         # Find all tile results
+#         all_results = []
+#         n_missing = 0
+#         for item in sorted(os.listdir(tiles_parent_dir)):
+#             if item == 'blocks_list.csv':
+#                 continue
+#             item_path = os.path.join(tiles_parent_dir, item)
+#             if os.path.isdir(item_path) and '_' in item:
+#                 results_file = os.path.join(item_path, 'estimate_damage_fn', 'tile_damage_function_results.csv')
+#                 if os.path.exists(results_file):
+#                     try:
+#                         df = pd.read_csv(results_file)
+#                         all_results.append(df)
+#                     except Exception as e:
+#                         hb.log(f'Warning: Could not read {results_file}: {e}')
+#                         n_missing += 1
+
+#         hb.log(f'Found {len(all_results)} tile results files ({n_missing} unreadable)')
+
 def aggregate_damage_results(p):
     """
     Aggregate damage function results from all tiles into single summary.
@@ -1191,7 +1335,8 @@ def aggregate_damage_results(p):
                 continue
             item_path = os.path.join(tiles_parent_dir, item)
             if os.path.isdir(item_path) and '_' in item:
-                results_file = os.path.join(item_path, 'estimate_damage_fn', 'tile_damage_function_results.csv')
+                # FIXED: Look in tile_regression_and_prediction directory
+                results_file = os.path.join(item_path, 'tile_regression_and_prediction', 'tile_damage_function_results.csv')
                 if os.path.exists(results_file):
                     try:
                         df = pd.read_csv(results_file)
@@ -1199,9 +1344,12 @@ def aggregate_damage_results(p):
                     except Exception as e:
                         hb.log(f'Warning: Could not read {results_file}: {e}')
                         n_missing += 1
+                else:
+                    n_missing += 1
 
-        hb.log(f'Found {len(all_results)} tile results files ({n_missing} unreadable)')
-
+        hb.log(f'Found {len(all_results)} tile results files ({n_missing} missing/unreadable)')
+        
+        #####################################
         if not all_results:
             hb.log('No results found, exiting.')
             return
@@ -1296,6 +1444,48 @@ def aggregate_damage_results(p):
         hb.log(f'Summary saved to: {summary_path}')
 
 
+# def stitch_avoided_mortality_raster(p):
+#     """
+#     Stitch together all tile avoided mortality .npy arrays into a global array,
+#     then save as GeoTIFF using pygeoprocessing.
+#     """
+#     if not p.run_this:
+#         return
+
+#     tiff_output_path = os.path.join(p.cur_dir, 'avoided_mortality_global.tif')
+#     if os.path.exists(tiff_output_path):
+#         return
+
+#     hb.log('Stitching avoided mortality tiles into global array...')
+#     blocks_list_path = os.path.join(p.tile_zones_dir, 'blocks_list.csv')
+#     blocks_df = pd.read_csv(blocks_list_path, header=None)
+#     blocks_df.columns = ['col_offset', 'row_offset', 'n_cols', 'n_rows']
+#     max_row = int((blocks_df['row_offset'] + blocks_df['n_rows']).max())
+#     max_col = int((blocks_df['col_offset'] + blocks_df['n_cols']).max())
+#     global_array = np.full((max_row, max_col), np.nan, dtype=np.float32)
+#     tiles_found = 0
+#     tiles_missing = 0
+#     for idx, row in blocks_df.iterrows():
+#         col_offset = int(row['col_offset'])
+#         row_offset = int(row['row_offset'])
+#         n_cols = int(row['n_cols'])
+#         n_rows = int(row['n_rows'])
+#         tile_name = f'{row_offset}_{col_offset}'
+#         tile_dir = os.path.join(
+#             p.tile_zones_dir,
+#             tile_name,
+#             'generate_tile_avoided_mortality'
+#         )
+#         tile_path = os.path.join(tile_dir, f'avoided_mortality_tile_{tile_name}.npy')
+#         if os.path.exists(tile_path):
+#             tile_array = np.load(tile_path)
+#             global_array[row_offset:row_offset+n_rows, col_offset:col_offset+n_cols] = tile_array
+#             tiles_found += 1
+#         else:
+#             tiles_missing += 1
+#             # hb.log(f'Warning: Missing tile {tile_name} at {tile_path}')
+#     hb.log(f'Found {tiles_found} tiles to stitch, {tiles_missing} tiles missing')
+
 def stitch_avoided_mortality_raster(p):
     """
     Stitch together all tile avoided mortality .npy arrays into a global array,
@@ -1309,46 +1499,65 @@ def stitch_avoided_mortality_raster(p):
         return
 
     hb.log('Stitching avoided mortality tiles into global array...')
+    
+    # Load reference raster to get exact dimensions and geotransform
+    ref_raster_path = os.path.join(p.s3_proj_dir, 'aligned_rasters', 'avoided_export_2019.tif')
+    ref_ds = gdal.Open(ref_raster_path)
+    ref_n_rows = ref_ds.RasterYSize
+    ref_n_cols = ref_ds.RasterXSize
+    geotransform = ref_ds.GetGeoTransform()
+    projection_wkt = ref_ds.GetProjection()
+    ref_ds = None
+    
+    hb.log(f'Creating global array: {ref_n_rows} rows x {ref_n_cols} cols')
+    
+    # Initialize global array with reference dimensions
+    global_array = np.full((ref_n_rows, ref_n_cols), np.nan, dtype=np.float32)
+    
     blocks_list_path = os.path.join(p.tile_zones_dir, 'blocks_list.csv')
     blocks_df = pd.read_csv(blocks_list_path, header=None)
     blocks_df.columns = ['col_offset', 'row_offset', 'n_cols', 'n_rows']
-    max_row = int((blocks_df['row_offset'] + blocks_df['n_rows']).max())
-    max_col = int((blocks_df['col_offset'] + blocks_df['n_cols']).max())
-    global_array = np.full((max_row, max_col), np.nan, dtype=np.float32)
+    
     tiles_found = 0
     tiles_missing = 0
+    
     for idx, row in blocks_df.iterrows():
         col_offset = int(row['col_offset'])
         row_offset = int(row['row_offset'])
         n_cols = int(row['n_cols'])
         n_rows = int(row['n_rows'])
         tile_name = f'{row_offset}_{col_offset}'
+        
         tile_dir = os.path.join(
             p.tile_zones_dir,
             tile_name,
-            'generate_tile_avoided_mortality'
+            'tile_regression_and_prediction'
         )
         tile_path = os.path.join(tile_dir, f'avoided_mortality_tile_{tile_name}.npy')
+        
         if os.path.exists(tile_path):
             tile_array = np.load(tile_path)
+            
+            # Verify tile dimensions match expected
+            if tile_array.shape != (n_rows, n_cols):
+                hb.log(f'Warning: Tile {tile_name} has unexpected shape {tile_array.shape}, expected ({n_rows}, {n_cols})')
+                tiles_missing += 1
+                continue
+            
+            # Insert tile into global array at correct position
+            # Row/col offsets from GDAL ReadAsArray are already in the correct coordinate system
             global_array[row_offset:row_offset+n_rows, col_offset:col_offset+n_cols] = tile_array
             tiles_found += 1
         else:
             tiles_missing += 1
-            # hb.log(f'Warning: Missing tile {tile_name} at {tile_path}')
+    
     hb.log(f'Found {tiles_found} tiles to stitch, {tiles_missing} tiles missing')
-
-    # Save as GeoTIFF using pygeoprocessing
-    # Use one of the input rasters for geotransform/projection
-    ref_raster_path = os.path.join(p.s3_proj_dir, 'aligned_rasters', 'avoided_export_2019.tif')
-    ds = gdal.Open(ref_raster_path)
-    geotransform = ds.GetGeoTransform()
-    projection_wkt = ds.GetProjection()
-    ds = None
-    pixel_size = (geotransform[1], abs(geotransform[5]))
+    
+    # Save using pygeoprocessing with correct geotransform
+    pixel_size = (geotransform[1], geotransform[5])  # Note: geotransform[5] is negative for north-up
     origin = (geotransform[0], geotransform[3])
-    target_nodata = np.nan
-
+    target_nodata = -9999.0
+    
     pygeo.geoprocessing.numpy_array_to_raster(
         global_array,
         target_nodata,
@@ -1362,7 +1571,7 @@ def stitch_avoided_mortality_raster(p):
         )
     )
     hb.log(f'Stitched global avoided mortality GeoTIFF saved to: {tiff_output_path}')
-
+    
     # Calculate global statistics
     valid_vals = global_array[np.isfinite(global_array)]
     if len(valid_vals) > 0:

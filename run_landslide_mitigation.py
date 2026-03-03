@@ -48,12 +48,12 @@ def build_landslide_mitigation_task_tree(p):
 
     
 if __name__ == '__main__':
-    hb.log('Starting SLURM-based landslide workflow...')
+    hb.log('Starting landslide mitigation workflow...')
     
     # Create the ProjectFlow object
     p = hb.ProjectFlow()
     p.force_run = False
-    p.L = hb.get_logger('landslide_slurm_workflow')
+    p.L = hb.get_logger('landslide_mitigation_workflow')
 
     # Base directories
     p.base_data_dir = "Files/base_data/"
@@ -88,7 +88,7 @@ if __name__ == '__main__':
     p.use_slurm = False
 
     # Processing parameters
-    p.processing_resolution = 1000  # Tile size in pixels (increase for less output)
+    p.processing_resolution = 2000  # Tile size in pixels (increase for less output)
     p.run_in_parallel = True
     p.save_tile_geotiffs = False
     p.num_workers = 4
@@ -97,4 +97,4 @@ if __name__ == '__main__':
     build_landslide_mitigation_task_tree(p)
     
     # Run
-    p.execute() 
+    p.execute()
