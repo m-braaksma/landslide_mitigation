@@ -53,7 +53,7 @@ def test_preprocess_nasa_glc_with_real_data():
         
         # Get paths to real data
         p.reference_raster_path = p.get_path(
-            os.path.join(p.base_data_dir, 'worldpop', 'ppp_2000_1km_Aggregated.tif')
+            os.path.join(p.base_data_dir, 'preprocess_data', 'reference', 'global_1km_reference.tif')
         )
         glc_csv_path = p.get_path(
             os.path.join(p.base_data_dir, 'nasa_glc', 'Global_Landslide_Catalog_Export_rows.csv')
