@@ -18,7 +18,7 @@ flowchart LR
     C --> D
     D --> E[/Observed deforestation/]
     D --> F[/Counterfactual deforestation scenarios/]
-    E --> G[/Avoided mortality and economic valuation/]
+    E --> G((Avoided mortality and economic valuation))
     F --> G
 ```
 
