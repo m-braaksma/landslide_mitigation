@@ -12,10 +12,14 @@ At a high level, the workflow is:
 
 ```mermaid
 flowchart LR
-    A[Gridded terrain, climate, roads, population, vegetation] --> B[Landslide occurrence model]
-    B --> C[Conditional mortality model]
-    C --> D[Counterfactual deforestation scenarios]
-    D --> E[Avoided mortality and economic valuation]
+    A(Gridded terrain, climate, roads, population, vegetation) --> B{{Landslide occurrence model}}
+    A --> C{{Conditional mortality model}}
+    B --> D{Global mortality predictions}
+    C --> D
+    D --> E[/Observed deforestation/]
+    D --> F[/Counterfactual deforestation scenarios/]
+    E --> G[/Avoided mortality and economic valuation/]
+    F --> G
 ```
 
 ## Simplified Method
