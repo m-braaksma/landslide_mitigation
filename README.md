@@ -10,7 +10,7 @@ This project studies whether forests and other natural vegetation reduce landsli
 
 At a high level, the workflow is:
 
-```{mermaid}
+```mermaid
 flowchart LR
     A[Gridded terrain, climate, roads, population, vegetation] --> B[Landslide occurrence model]
     B --> C[Conditional mortality model]
@@ -83,4 +83,4 @@ These outputs are illustrative and still subject to change.
 
 ## Author
 
-[Matthew Braaksma](m-braaksma.github.io), University of Minnesota
+[Matthew Braaksma](m-braaksma.github.io), University of Minnesota, Department of Applied Economics
