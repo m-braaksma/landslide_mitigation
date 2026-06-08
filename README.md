@@ -94,7 +94,17 @@ These outputs are illustrative and still subject to change.
 
 ## Citation
 
-If you use this software, please cite it using the metadata in the [CITATION.cff](CITATION.cff) file. 
-Alternatively, click the "Cite this repository" button in the sidebar of this GitHub page to export your preferred format.
+If you use this software, [please cite it](CITATION.cff). 
 
-> Braaksma, M. (2026). Forest Protection and Landslide Regulation: A Global Ecosystem Service Methodology to Value Avoided Human Mortality (Version v0.1.0) [Computer software]. https://doi.org/10.5281/zenodo.20600889
+> Braaksma, M. (2026). Forest Protection and Landslide Regulation: A Global Ecosystem Service Methodology to Value Avoided Human Mortality (Version v0.1.0) [Computer software]. [https://doi.org/10.5281/zenodo.20600889](https://doi.org/10.5281/zenodo.20600889)
+
+```bibtex
+@software{Braaksma2026,
+  author = {Braaksma, Matthew},
+  title = {Forest Protection and Landslide Regulation: A Global Ecosystem Service Methodology to Value Avoided Human Mortality},
+  year = {2026},
+  version = {v0.1.0},
+  doi = {10.5281/zenodo.20600889},
+  url = {https://github.com/m-braaksma/landslide\_mitigation}
+}
+```

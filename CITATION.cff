@@ -1,6 +1,3 @@
-# This CITATION.cff file was generated with cffinit.
-# Visit https://bit.ly/cffinit to generate yours today!
-
 cff-version: 1.2.0
 title: >-
   Forest Protection and Landslide Regulation: A Global
@@ -20,6 +17,7 @@ identifiers:
   - type: doi
     value: 10.5281/zenodo.20600889
     description: 'https://doi.org/10.5281/zenodo.20600889'
+repository-code: 'https://github.com/m-braaksma/landslide_mitigation'
 abstract: >-
   Forests and other natural vegetation can reduce landslide
   risk by stabilizing slopes, yet their mortality-reduction
