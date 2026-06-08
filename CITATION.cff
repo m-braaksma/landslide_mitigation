@@ -1,0 +1,58 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: >-
+  Forest Protection and Landslide Regulation: A Global
+  Ecosystem Service Methodology to Value Avoided Human
+  Mortality
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Matthew
+    family-names: Braaksma
+    email: braak014@umn.edu
+    orcid: 'https://orcid.org/0000-0002-3895-1835'
+    affiliation: University of Minnesota
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.20600890
+    description: 'https://doi.org/10.5281/zenodo.20600889'
+repository-code: 'https://github.com/m-braaksma/landslide_mitigation'
+abstract: >-
+  Forests and other natural vegetation can reduce landslide
+  risk by stabilizing slopes, yet their mortality-reduction
+  benefits are rarely quantified at global scale. This study
+  develops a 1 km annual framework that combines the Unified
+  Global Landslide Catalogue with gridded terrain, climate,
+  road, population, and forest-loss data to estimate avoided
+  human mortality from forest-mediated landslide regulation.
+  Landslide occurrence is modeled with a logit specification
+  and conditional fatalities with a hurdle-severity model,
+  then combined under observed and counterfactual
+  deforestation scenarios. The resulting pixel-level
+  estimates are aggregated to countries, World Bank regions,
+  and the globe, and monetized using GDP-adjusted values of
+  a statistical life. Results show that avoided mortality is
+  concentrated in mountain regions of the Andes, Europe, and
+  Asia, while economic values vary with income levels as
+  well as hazard exposure. The framework advances valuation
+  of an underrepresented regulating service by linking
+  hazard modeling with mortality prediction and producing
+  globally comparable, reproducible estimates that can
+  inform natural capital accounting (SEEA) and policy in
+  underrepresented regions.
+keywords:
+  - landslides
+  - landslide mitigation
+  - deforestation
+  - mortality risk
+  - ecosystem services measurement
+  - ecosystem valuation
+  - natural capital accounting
+license: MIT
+commit: b7df20ce0c3e4b853db5e7794ad9be314b2154dd
+version: v0.1.0
+date-released: '2026-06-08'
