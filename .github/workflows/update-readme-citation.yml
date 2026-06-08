@@ -1,0 +1,16 @@
+name: Update README Citation
+on:
+  push:
+    paths:
+      - 'CITATION.cff'
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dynamic Citation Repo Profile
+        uses: jgomezdans/cff-to-readme@v1.1
+        with:
+          cff_file: 'CITATION.cff'
+          readme_file: 'README.md'
+          commit_message: 'Update README with latest CITATION.cff information'

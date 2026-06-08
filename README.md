@@ -88,3 +88,8 @@ These outputs are illustrative and still subject to change.
 ## Author
 
 [Matthew Braaksma](m-braaksma.github.io), University of Minnesota, Department of Applied Economics
+
+## Citation
+
+<!-- START CITATION -->
+<!-- END CITATION -->
