@@ -1,9 +1,9 @@
-# Landslide Mitigation
+# Forest Protection and Landslide Regulation: A Global Ecosystem Service Methodology to Value Avoided Human Mortality
 
-![Version](https://badgen.net[m-braaksma]/[landslide_mitigation])
-![DOI](https://shields.io[10.5281/zenodo.20600890]-blue)
+![Version](https://img.shields.io/badge/version-0.1.0-blue)
+![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.20600890-green)
 
-Work-in-progress code and diagnostics for a dissertation project on forest-mediated landslide regulation and avoided human mortality.
+Code and diagnostics for a project on forest-mediated landslide regulation and avoided human mortality.
 
 > Status: this repository is actively evolving. The workflow, sample definitions, and reported numbers are preliminary and likely to change as the analysis is refined.
 
@@ -95,4 +95,7 @@ These outputs are illustrative and still subject to change.
 ## Citation
 
 If you use this software, please cite it using the metadata in the [CITATION.cff](CITATION.cff) file. 
-Alternatively, click the **"Cite this repository"** button in the sidebar of this GitHub page to export your preferred format.
+Alternatively, click the "Cite this repository" button in the sidebar of this GitHub page to export your preferred format.
+
+> Braaksma, M. (2026). Forest Protection and Landslide Regulation: A Global Ecosystem Service Methodology to Value Avoided Human Mortality (Version v0.1.0) [Computer software]. https://github.com/m-braaksma/landslide_mitigation
+
