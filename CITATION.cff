@@ -18,9 +18,8 @@ authors:
     affiliation: University of Minnesota 
 identifiers:
   - type: doi
-    value: 10.5281/zenodo.20600890
+    value: 10.5281/zenodo.20600889
     description: 'https://doi.org/10.5281/zenodo.20600889'
-repository-code: 'https://github.com/m-braaksma/landslide_mitigation'
 abstract: >-
   Forests and other natural vegetation can reduce landslide
   risk by stabilizing slopes, yet their mortality-reduction
