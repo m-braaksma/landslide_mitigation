@@ -15,7 +15,7 @@ authors:
     family-names: Braaksma
     email: braak014@umn.edu
     orcid: 'https://orcid.org/0000-0002-3895-1835'
-    affiliation: University of Minnesota
+    affiliation: University of Minnesota 
 identifiers:
   - type: doi
     value: 10.5281/zenodo.20600890
