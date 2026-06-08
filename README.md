@@ -1,5 +1,8 @@
 # Landslide Mitigation
 
+![Version](https://badgen.net[m-braaksma]/[landslide_mitigation])
+![DOI](https://shields.io[10.5281/zenodo.20600890]-blue)
+
 Work-in-progress code and diagnostics for a dissertation project on forest-mediated landslide regulation and avoided human mortality.
 
 > Status: this repository is actively evolving. The workflow, sample definitions, and reported numbers are preliminary and likely to change as the analysis is refined.
@@ -91,5 +94,5 @@ These outputs are illustrative and still subject to change.
 
 ## Citation
 
-<!-- START CITATION -->
-<!-- END CITATION -->
+If you use this software, please cite it using the metadata in the [CITATION.cff](CITATION.cff) file. 
+Alternatively, click the **"Cite this repository"** button in the sidebar of this GitHub page to export your preferred format.
