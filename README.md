@@ -1,7 +1,7 @@
 # Forest Protection and Landslide Regulation: A Global Ecosystem Service Methodology to Value Avoided Human Mortality
 
 [![Version](https://img.shields.io/badge/version-0.1.0-blue)](https://github.com/m-braaksma/landslide_mitigation/releases)
-[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.20600890-green)](https://zenodo.org/record/20600890)
+[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.20600889-green)](https://zenodo.org/record/20600890)
 
 Code and diagnostics for a project on forest-mediated landslide regulation and avoided human mortality.
 
