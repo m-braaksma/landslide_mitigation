@@ -1,5 +1,8 @@
 .DS_Store
 archived_20260518/
+*archive*
+*copy*
+*v0.1.0*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
