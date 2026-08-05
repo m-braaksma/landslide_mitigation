@@ -1,5 +1,5 @@
 """
-visualization_tasks.py
+tables_figures_tasks.py
 """
 import os
 import json
@@ -24,7 +24,7 @@ except ImportError:
 
 
 def tables_figures(p):
-    """Creates a directory for visualization outputs."""
+    """Creates a directory for tables and figures."""
     if p.run_this:
         return p
     return p    

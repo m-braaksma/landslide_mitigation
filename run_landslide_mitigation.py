@@ -63,9 +63,9 @@ def build_landslide_mitigation_task_tree(p):
     p.compute_avoided_mortality_task = p.add_task(valuation_tasks.compute_avoided_mortality, creates_dir=False)
 
     # ---------------------------------------------------------------- #
-    # VISUALIZATION (tables_figures_tasks.py)
+    # Tables & Figures (tables_figures_tasks.py)
     # ---------------------------------------------------------------- #
-    p.visualization_task = p.add_task(tables_figures_tasks.visualization, creates_dir=True)
+    p.tables_figures_task = p.add_task(tables_figures_tasks.tables_figures, creates_dir=True)
     p.compute_zonal_statistics_task = p.add_task(tables_figures_tasks.compute_zonal_statistics, creates_dir=False)
     p.export_regression_tables_task = p.add_task(tables_figures_tasks.export_regression_tables, creates_dir=False)
     p.plot_global_rasters_png_task = p.add_task(tables_figures_tasks.plot_global_rasters_png, creates_dir=False)
