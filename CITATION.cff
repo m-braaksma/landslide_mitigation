@@ -19,28 +19,7 @@ identifiers:
     description: 'https://doi.org/10.5281/zenodo.20600889'
 repository-code: 'https://github.com/m-braaksma/landslide_mitigation'
 abstract: >-
-  Forests and other natural vegetation can reduce landslide
-  risk by stabilizing slopes, yet their mortality-reduction
-  benefits are rarely quantified at global scale. This study
-  develops a 1 km annual framework that combines the Unified
-  Global Landslide Catalogue with gridded terrain, climate,
-  road, population, and forest-loss data to estimate avoided
-  human mortality from forest-mediated landslide regulation.
-  Landslide occurrence is modeled with a logit specification
-  and conditional fatalities with a hurdle-severity model,
-  then combined under observed and counterfactual
-  deforestation scenarios. The resulting pixel-level
-  estimates are aggregated to countries, World Bank regions,
-  and the globe, and monetized using GDP-adjusted values of
-  a statistical life. Results show that avoided mortality is
-  concentrated in mountain regions of the Andes, Europe, and
-  Asia, while economic values vary with income levels as
-  well as hazard exposure. The framework advances valuation
-  of an underrepresented regulating service by linking
-  hazard modeling with mortality prediction and producing
-  globally comparable, reproducible estimates that can
-  inform natural capital accounting (SEEA) and policy in
-  underrepresented regions.
+  A framework for global landslide risk assessment and valuation incorporating forest-cover effects on slope stability.
 keywords:
   - landslides
   - landslide mitigation
@@ -50,6 +29,6 @@ keywords:
   - ecosystem valuation
   - natural capital accounting
 license: MIT
-commit: b7df20ce0c3e4b853db5e7794ad9be314b2154dd
-version: v0.1.0
-date-released: '2026-06-08'
+commit: ddbbdbaab8e3479b5efe3c3930641bc7e6bbbc67
+version: v0.2.0
+date-released: '2026-08-05'

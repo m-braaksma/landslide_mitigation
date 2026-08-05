@@ -83,7 +83,7 @@ These outputs are illustrative and still subject to change.
 If you use this software, [please cite it](CITATION.cff).
 
 ```{text}
-Braaksma, M. (2026). Forest Protection and Landslide Regulation: A Global Ecosystem Service Methodology to Value Avoided Human Mortality (Version v0.2.0) [Computer software]. https://doi.org/10.5281/zenodo.VERSION_DOI
+Braaksma, M. (2026). Forest Protection and Landslide Regulation: A Global Ecosystem Service Methodology to Value Avoided Human Mortality (Version v0.2.0) [Computer software]. https://doi.org/10.5281/zenodo.21809632
 ```
 
 ```bibtex
@@ -92,7 +92,7 @@ Braaksma, M. (2026). Forest Protection and Landslide Regulation: A Global Ecosys
   title = {Forest Protection and Landslide Regulation: A Global Ecosystem Service Methodology to Value Avoided Human Mortality},
   year = {2026},
   version = {v0.2.0},
-  doi = {10.5281/zenodo.VERSION_DOI},
+  doi = {10.5281/zenodo.21809632},
   url = {https://github.com/m-braaksma/landslide\_mitigation}
 }
 ```
