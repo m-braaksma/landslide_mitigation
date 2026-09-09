@@ -261,7 +261,7 @@ def compute_slope(p):
             ds = None
  
         # ---- 2. Warp RAW (unfilled) elevation to the fine grid ----
-        raw_dem_src = os.path.join(p.shared_base_data_dir, 'seals', 'static_regressors', 'alt_m.tif')
+        raw_dem_src = p.get_path(os.path.join('seals', 'static_regressors', 'alt_m.tif'))
         dem_fine_path = os.path.join(work_dir, 'dem_fine.tif')
         if not os.path.exists(dem_fine_path) or p.force_run:
             warp_to_reference(

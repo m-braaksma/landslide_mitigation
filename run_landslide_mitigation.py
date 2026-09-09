@@ -85,15 +85,23 @@ if __name__ == '__main__':
     p.L = hb.get_logger('landslide_mitigation_workflow')
 
     # ---- DIR configuration ----
-    p.base_data_dir = (
+    # Raw, untouched source data for THIS project (GDrive-synced). NOT the
+    # same as p.base_data_dir below -- that name is reserved by hazelbean's
+    # get_path() convention for the local base_data cache (it scans here,
+    # and falls back to the cloud bucket, for anything requested via a Ref
+    # Path). UGLC events (vector) are the only raw source still read from
+    # here directly; every raster input now comes from base_data via
+    # get_path(), either from this project's own submission
+    # (submissions/landslide_mitigation/...) or another project's.
+    p.raw_input_data_dir = (
         '/Users/mbraaksma/Library/CloudStorage/GoogleDrive-braak014@umn.edu/'
         'Shared drives/NatCapTEEMs/Projects/Global GEP/Ecosystem Services '
         'SubFolders/Landslides/global_results/input_data_raw'
     )
-    p.shared_base_data_dir = os.path.expanduser('~/Files/base_data')
+    p.user_dir = os.path.expanduser('~')
+    p.base_data_dir = os.path.join(p.user_dir, 'Files', 'base_data')
 
     p.project_name = 'global_results_si'
-    p.user_dir = os.path.expanduser('~')
     p.project_dir = os.path.join(p.user_dir, 'Files', 'landslide_mitigation', p.project_name)
     p.set_project_dir(p.project_dir)
 
