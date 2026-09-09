@@ -1,24 +1,34 @@
 """
 input_data_tasks.py
 
-Raw sources read from p.base_data_dir (input_data_raw/), except ESA-CCI
-which reads from p.shared_base_data_dir (shared base_data, used across
-projects). All reprojected outputs write into p.input_data_dir.
+All raster inputs (except the EASE-Grid definition file itself, which is
+project-specific and lives in p.raw_input_data_dir) are sourced via
+p.get_path() against base_data Ref Paths - either this project's own
+submission (submissions/landslide_mitigation/..., see
+landslide_mitigation_si's submission_tasks.py for how those were built)
+or another project's base_data contribution (seals/, lulc/esa/). See
+https://justinandrewjohnson.com/earth_economy_devstack/ for the base_data
+/ Ref Path / get_path() conventions.
+
+The submitted layers already come combined (SoilGrids, HiHydroSoil - the
+0-30cm thickness-weighted depth combine happens once, at submission time,
+not per-project) and NDV-cleaned (WorldClim's negative-value artifacts,
+LandScan/soil_depth's NDV-reclassification bug - see submission_tasks.py
+history), so the reproject_* functions here only need to warp onto the
+EASE-Grid; no more combining or source-specific cleanup.
+
+All reprojected outputs write into p.input_data_dir.
 """
 import os
 import numpy as np
 import pandas as pd
-from osgeo import gdal, osr
+from osgeo import gdal
 import geopandas as gpd
 import pygeoprocessing as pygeo
 
 from landslide_mitigation_tasks.landslide_mitigation_utils import (
     parse_gpd_grid_definition,
     warp_to_reference,
-)
-from landslide_mitigation_tasks.landslide_mitigation_functions import (
-    thickness_weighted_combine,
-    DEPTH_WEIGHTS_0_30CM,
 )
 
 
@@ -42,7 +52,7 @@ def build_ease_grid_reference(p):
     and builds an empty reference raster on that exact grid.
     """
     if p.run_this:
-        gpd_path = os.path.join(p.base_data_dir, 'nsidc_proj', 'EASE2_M01km.gpd')
+        gpd_path = os.path.join(p.raw_input_data_dir, 'nsidc_proj', 'EASE2_M01km.gpd')
         grid = parse_gpd_grid_definition(gpd_path)
 
         out_path = os.path.join(p.input_data_dir, 'ease_grid_reference.tif')
@@ -75,7 +85,7 @@ def build_ease_grid_reference(p):
 
 def reproject_dem(p):
     if p.run_this:
-        src_path = os.path.join(p.shared_base_data_dir, 'seals', 'static_regressors', 'alt_m.tif')
+        src_path = p.get_path(os.path.join('seals', 'static_regressors', 'alt_m.tif'))
         out_path = os.path.join(p.input_data_dir, 'dem_1km.tif')
         if os.path.exists(out_path) and not p.force_run:
             p.dem_path = out_path
@@ -99,7 +109,7 @@ def reproject_dem(p):
 
 def reproject_gaez(p):
     if p.run_this:
-        src_path = os.path.join(p.base_data_dir, 'fao_gaez', 'GAEZ-V5.AEZ57.tif')
+        src_path = p.get_path(os.path.join('submissions', 'landslide_mitigation', 'gaez_zones.tif'))
         out_path = os.path.join(p.input_data_dir, 'gaez_zones_1km.tif')
         if os.path.exists(out_path) and not p.force_run:
             p.gaez_path = out_path
@@ -135,8 +145,9 @@ def reproject_esacci_forest_share(p):
         os.makedirs(work_dir, exist_ok=True)
 
         for year in p.data_processing_range:
-            src_path = os.path.join(
-                p.shared_base_data_dir, 'lulc', 'esa', f'lulc_esa_{year}.tif'
+            src_path = p.get_path(
+                os.path.join('lulc', 'esa', f'lulc_esa_{year}.tif'),
+                raise_error_if_fail=False,
             )
             if not os.path.exists(src_path):
                 p.L.warning(f'ESA-CCI {year} not found, skipping year.')
@@ -213,7 +224,7 @@ def reproject_uglc_events(p):
     """
     if p.run_this:
  
-        src_path = os.path.join(p.base_data_dir, 'uglc', 'UGLC_point.csv')
+        src_path = p.get_path(os.path.join('submissions', 'landslide_mitigation', 'uglc', 'UGLC_point.csv'))
         out_path = os.path.join(p.input_data_dir, 'uglc_points_ease.gpkg')
         if os.path.exists(out_path) and not p.force_run:
             p.uglc_path = out_path
@@ -298,23 +309,24 @@ def reproject_landscan_population(p):
     """
     if p.run_this:
         for year in p.data_processing_range:
-            src_path = os.path.join(
-                p.base_data_dir, 'landscan', f'landscan-global-{year}.tif'
+            src_path = p.get_path(
+                os.path.join('submissions', 'landslide_mitigation', 'landscan', f'landscan_{year}.tif'),
+                raise_error_if_fail=False,
             )
             if not os.path.exists(src_path):
                 p.L.warning(f'LandScan {year} not found, skipping year.')
                 continue
- 
+
             out_path = os.path.join(
                 p.input_data_dir, 'landscan_1km', f'landscan_{year}_1km.tif'
             )
             if os.path.exists(out_path) and not p.force_run:
                 continue
- 
+
             warp_to_reference(
                 src_path, out_path, p.ease_grid_reference_path,
                 resample_method='sum',        # conserve total population
-                src_nodata=-2147483647,
+                src_nodata=-9999,             # POG-standard NDV (base_data submission fixed this)
                 dst_nodata=-9999.0,
                 output_type=gdal.GDT_Float32,
             )
@@ -323,45 +335,28 @@ def reproject_landscan_population(p):
 
 
 # ==================================================================== #
-# 7. SoilGrids --- combine 0-30cm depth layers, unit conversion, warp
+# 7. SoilGrids -- 0-30cm depth combine + unit conversion already baked
+#    into the submitted POGs (see submission_tasks.py::pog_soilgrids),
+#    so this just warps each property onto the EASE-Grid.
 # ==================================================================== #
 
-SOILGRIDS_PROPERTIES = {
-    'sand_pct': ('sand', 10),
-    'clay_pct': ('clay', 10),
-    'org_carbon_pct': ('soc', 10),
-    'bulk_density': ('bdod', 100),
-}
+SOILGRIDS_PROPERTIES = ['sand_pct', 'clay_pct', 'org_carbon_pct', 'bulk_density']
+
 def reproject_soilgrids_properties(p):
     if p.run_this:
-        work_dir = os.path.join(p.input_data_dir, 'soilgrids_work')
-        os.makedirs(work_dir, exist_ok=True)
         p.soilgrids_paths = {}
 
-        for out_name, (prop_code, conv_factor) in SOILGRIDS_PROPERTIES.items():
+        for out_name in SOILGRIDS_PROPERTIES:
             out_path = os.path.join(p.input_data_dir, f'soilgrids_{out_name}_1km.tif')
             if os.path.exists(out_path) and not p.force_run:
                 p.soilgrids_paths[out_name] = out_path
                 continue
 
-            depth_paths_local = {
-                depth: os.path.join(
-                    p.base_data_dir, 'soilgrids', f'{prop_code}_{depth}_mean.tif'
-                )
-                for depth in DEPTH_WEIGHTS_0_30CM
-            }
-            for depth, path in depth_paths_local.items():
-                if not os.path.exists(path):
-                    raise FileNotFoundError(f'Missing SoilGrids TIF: {path}')
-
-            native_combined_path = os.path.join(work_dir, f'{out_name}_native.tif')
-            thickness_weighted_combine(
-                depth_paths_local, native_combined_path, conv_factor=conv_factor
+            src_path = p.get_path(
+                os.path.join('submissions', 'landslide_mitigation', f'soilgrids_{out_name}.tif')
             )
-            p.L.info(f'{out_name}: combined 0-30cm + unit-converted -> {native_combined_path}')
-
             warp_to_reference(
-                native_combined_path, out_path, p.ease_grid_reference_path,
+                src_path, out_path, p.ease_grid_reference_path,
                 resample_method='average',
                 src_nodata=-9999.0, dst_nodata=-9999.0,
                 output_type=gdal.GDT_Float32,
@@ -373,82 +368,51 @@ def reproject_soilgrids_properties(p):
 
 
 # ==================================================================== #
-# 8. WorldClim BIO12 -- climatological rain (q input)
+# 8. WorldClim BIO12 -- climatological rain (q input). Negative-value
+#    artifacts (including the source's huge-sentinel NDV) are already
+#    cleaned to the standard -9999 NDV in the submitted POG (see
+#    submission_tasks.py::pog_worldclim_bio12), so this just warps.
 # ==================================================================== #
 
 def reproject_worldclim_bio12(p):
     """Mean annual precipitation (mm), 1970-2000 climate normal."""
     if p.run_this:
-        src_path = os.path.join(p.base_data_dir, 'worldclim', 'wc2.1_30s_bio_12.tif')
+        src_path = p.get_path(os.path.join('submissions', 'landslide_mitigation', 'worldclim_bio12.tif'))
         out_path = os.path.join(p.input_data_dir, 'worldclim_bio12_1km.tif')
-        
+
         if os.path.exists(out_path) and not p.force_run:
             p.climatological_rain_path = out_path
             return p
-        
-        # Intermediate step: replace negatives with -9999.0 using raster_calculator
-        temp_path = out_path.replace('.tif', '_temp_cleaned.tif')
-        
-        def replace_negatives(data):
-            """Replace all negative values with -9999.0"""
-            data[data < 0] = -9999.0
-            return data
-        
-        pygeo.raster_calculator(
-            base_raster_path_band_const_list=[(src_path, 1)],
-            local_op=replace_negatives,
-            target_raster_path=temp_path,
-            datatype_target=gdal.GDT_Float32,
-            nodata_target=-9999.0,
-            calc_raster_stats=True,
-            raster_driver_creation_tuple=('GTIFF', ('TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW', 'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
-        )
-        
-        # Warp the cleaned file
+
         warp_to_reference(
-            temp_path, out_path, p.ease_grid_reference_path,
+            src_path, out_path, p.ease_grid_reference_path,
             resample_method='average',
             src_nodata=-9999.0,
             dst_nodata=-9999.0,
             output_type=gdal.GDT_Float32,
         )
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-        
         p.L.info(f'WorldClim BIO12 reprojected: {out_path}')
         p.climatological_rain_path = out_path
-    
+
     return p
 
 
 # ==================================================================== #
-# 9. HiHydroSoil K_sat -- combine + warp
+# 9. HiHydroSoil K_sat -- 0-30cm depth combine already baked into the
+#    submitted POG (see submission_tasks.py::pog_hihydrosoil_ksat), so
+#    this just warps onto the EASE-Grid.
 # ==================================================================== #
 
 def reproject_hihydrosoil_ksat(p):
     if p.run_this:
-        work_dir = os.path.join(p.input_data_dir, 'hihydrosoil_work')
-        os.makedirs(work_dir, exist_ok=True)
-
         out_path = os.path.join(p.input_data_dir, 'ksat_1km.tif')
         if os.path.exists(out_path) and not p.force_run:
             p.ksat_path = out_path
             return p
 
-        depth_paths_local = {
-            depth: os.path.join(p.base_data_dir, 'hihydrosoil', f'Ksat_{depth}_M_250m.tif')
-            for depth in DEPTH_WEIGHTS_0_30CM
-        }
-        for depth, path in depth_paths_local.items():
-            if not os.path.exists(path):
-                raise FileNotFoundError(f'Missing HiHydroSoil file: {path}')
-
-        native_combined_path = os.path.join(work_dir, 'ksat_native.tif')
-        thickness_weighted_combine(depth_paths_local, native_combined_path)
-        p.L.info(f'K_sat combined 0-30cm: {native_combined_path}')
-
+        src_path = p.get_path(os.path.join('submissions', 'landslide_mitigation', 'hihydrosoil_ksat.tif'))
         warp_to_reference(
-            native_combined_path, out_path, p.ease_grid_reference_path,
+            src_path, out_path, p.ease_grid_reference_path,
             resample_method='average',
             src_nodata=-9999.0, dst_nodata=-9999.0,
             output_type=gdal.GDT_Float32,
@@ -464,10 +428,7 @@ def reproject_hihydrosoil_ksat(p):
 
 def reproject_soil_depth(p):
     if p.run_this:
-        src_path = os.path.join(
-            p.base_data_dir, 'Global_Soil_Regolith_Sediment_1304', 'data',
-            'average_soil_and_sedimentary-deposit_thickness.tif'
-        )
+        src_path = p.get_path(os.path.join('submissions', 'landslide_mitigation', 'soil_depth.tif'))
         out_path = os.path.join(p.input_data_dir, 'soil_depth_1km.tif')
         if os.path.exists(out_path) and not p.force_run:
             p.soil_depth_path = out_path
@@ -476,7 +437,8 @@ def reproject_soil_depth(p):
         warp_to_reference(
             src_path, out_path, p.ease_grid_reference_path,
             resample_method='average',
-            src_nodata=-1.0, dst_nodata=-9999.0,
+            src_nodata=-9999,  # POG-standard NDV (base_data submission fixed this from raw -1)
+            dst_nodata=-9999.0,
             output_type=gdal.GDT_Float32,
         )
         p.L.info(f'Soil depth (Pelletier/ORNL) reprojected: {out_path}')
@@ -492,36 +454,20 @@ def reproject_grip_roads(p):
     covariate.
 
     Per GRIP4 ReadMe: WGS84 lat/lon, 5 arcminute cells (~9.26km at the
-    equator) -- UPSAMPLES (coarse ~9km source -> 1km target)
+    equator) -- UPSAMPLES (coarse ~9km source -> 1km target). The
+    submitted POG already has WGS84 assigned (the raw .asc has no
+    embedded CRS -- fixed once at submission time, see
+    submission_tasks.py::pog_grip_roads), so no CRS handling needed here.
     """
     if p.run_this:
-        src_path = os.path.join(
-            p.base_data_dir, 'GRIP4_density_total', 'grip4_total_dens_m_km2.asc'
-        )
+        src_path = p.get_path(os.path.join('submissions', 'landslide_mitigation', 'grip4_road_density.tif'))
         out_path = os.path.join(p.input_data_dir, 'road_density_1km.tif')
         if os.path.exists(out_path) and not p.force_run:
             p.road_density_path = out_path
             return p
 
-        # .asc files often lack an embedded CRS; GRIP4's ReadMe confirms
-        # WGS84 lat/lon, so assign it explicitly
-        probe_ds = gdal.Open(src_path)
-        has_crs = probe_ds.GetProjection() not in (None, '')
-        probe_ds = None
-
-        src_path_for_warp = src_path
-        if not has_crs:
-            vrt_path = os.path.join(p.input_data_dir, 'grip_roads_work', 'grip4_wgs84.vrt')
-            os.makedirs(os.path.dirname(vrt_path), exist_ok=True)
-            srs = osr.SpatialReference()
-            srs.ImportFromEPSG(4326)
-            gdal.Translate(vrt_path, src_path, outputSRS=srs.ExportToWkt())
-            src_path_for_warp = vrt_path
-            p.L.info('Assigned WGS84 CRS to GRIP4 .asc (confirmed via ReadMe.txt, '
-                      'not embedded in the source file).')
-
         warp_to_reference(
-            src_path_for_warp, out_path, p.ease_grid_reference_path,
+            src_path, out_path, p.ease_grid_reference_path,
             resample_method='bilinear',  # UPSAMPLING ~9km -> 1km, not downsampling
             src_nodata=-9999,
             dst_nodata=-9999.0,
@@ -538,27 +484,29 @@ def reproject_grip_roads(p):
 # ==================================================================== #
 
 def reproject_rain_daily(p):
-    """ERA5-Land annual max daily rainfall, per year. Native ~0.1deg
-    (~11km at the equator) -- COARSER than the 1km target, so this
-    UPSAMPLES. 'bilinear', not 'average' (same class as GRIP roads).
+    """ERA5-Land annual max daily rainfall, per year. The submitted POG is
+    at 300 arcsec (~10km, resampled from the source's native ~0.1deg --
+    see submission_tasks.py::pog_era5_rain), still COARSER than the 1km
+    target, so this UPSAMPLES. 'bilinear', not 'average' (same class as
+    GRIP roads).
     """
     if p.run_this:
- 
+
         for year in p.data_processing_range:
-            src_path = os.path.join(
-                p.base_data_dir, 'era5_land_precip_annual_tif',
-                f'era5_max_daily_mm_{year}.tif'
+            src_path = p.get_path(
+                os.path.join('submissions', 'landslide_mitigation', 'era5_land', f'era5_max_daily_mm_{year}.tif'),
+                raise_error_if_fail=False,
             )
             if not os.path.exists(src_path):
                 p.L.warning(f'ERA5 max daily rain {year} not found at {src_path}, skipping.')
                 continue
- 
+
             out_path = os.path.join(
                 p.input_data_dir, 'era5_land', f'era5_max_daily_mm_{year}.tif'
             )
             if os.path.exists(out_path) and not p.force_run:
                 continue
- 
+
             warp_to_reference(
                 src_path, out_path, p.ease_grid_reference_path,
                 resample_method='bilinear',  # UPSAMPLING ~11km -> 1km

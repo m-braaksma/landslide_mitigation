@@ -414,9 +414,9 @@ def build_vsl_raster(p):
         # ---- 1. Parse OECD VSL CSV ----
         # NOTE: has commas/special characters in
         # the name as downloaded, glob to avoid a brittle hardcoded match.
-        oecd_candidates = glob.glob(os.path.join(p.base_data_dir, 'oecd_vsl', '*.csv'))
+        oecd_candidates = glob.glob(os.path.join(p.raw_input_data_dir, 'oecd_vsl', '*.csv'))
         if not oecd_candidates:
-            raise FileNotFoundError(f'No CSV found in {p.base_data_dir}/oecd_vsl/')
+            raise FileNotFoundError(f'No CSV found in {p.raw_input_data_dir}/oecd_vsl/')
         oecd_path = oecd_candidates[0]
  
         oecd = pd.read_csv(oecd_path)
@@ -433,7 +433,7 @@ def build_vsl_raster(p):
                   f'(deflated to 2019 constant USD, factor={DEFLATOR_2022_TO_2019:.4f}).')
  
         # ---- 2. Join to correspondence GPKG ----
-        correspondence_path = os.path.join(p.shared_base_data_dir, 'cartographic', 'ee_r264_correspondence.gpkg')
+        correspondence_path = p.get_path(os.path.join('cartographic', 'ee_r264_correspondence.gpkg'))
         corr = gpd.read_file(correspondence_path)
         iso3_field = 'iso3'
         if iso3_field not in corr.columns:
