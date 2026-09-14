@@ -38,6 +38,7 @@ The current version of the method has three main pieces.
 
 - `run_landslide_mitigation.py`: project flow entry point.
 - `landslide_mitigation_tasks/`: task definitions, preprocessing, model fitting, and result exports.
+- `run_make_base_data_submissions.py` / `landslide_mitigation_tasks/submission_tasks.py`: converts this project's raster inputs into Pyramidal Cloud-Optimized GeoTIFFs (POGs) for contribution to the shared GEP `base_data` cache - a one-off/occasional step, not part of the main modeling pipeline.
 - `assets/`: lightweight preview figures and summary tables for the README.
 
 ## Preliminary Outputs
@@ -58,20 +59,20 @@ These outputs are illustrative and still subject to change.
 
 | Region | Avoided mortality | Value (US$ millions) |
 |---|---:|---:|
-| South Asia | 382.18 | 388.83 |
-| Sub-Saharan Africa | 149.41 | 157.50 |
-| East Asia & Pacific | 60.82 | 161.19 |
-| Latin America & Caribbean | 75.20 | 178.03 |
-| North America | 1.05 | 8.25 |
-| Europe & Central Asia | 2.21 | 12.26 |
-| Middle East & North Africa | 1.90 | 2.03 |
-| **Global total** | **672.77** | **908.10** |
+| South Asia | 364.13 | 291.13 |
+| Sub-Saharan Africa | 145.84 | 64.47 |
+| East Asia & Pacific | 57.01 | 158.07 |
+| Latin America & Caribbean | 59.97 | 167.12 |
+| North America | 1.04 | 9.50 |
+| Europe & Central Asia | 2.18 | 12.12 |
+| Middle East & North Africa | 1.85 | 4.75 |
+| **Global total** | **632.02** | **707.16** |
 
 ## Notes on Data and Releases
 
 - Code is being developed in this repository.
-- Data are not yet packaged in a public data repository.
-- Public data and result artifacts may be added later once the analysis is finalized.
+- This project's raster inputs (GAEZ zones, WorldClim, SoilGrids, HiHydroSoil, GRIP4 roads, ERA5 rainfall, LandScan population, soil depth) have been converted to Pyramidal Cloud-Optimized GeoTIFFs (POGs) and contributed to the shared GEP `base_data` submissions drive (`submissions/landslide_mitigation/`). See `run_make_base_data_submissions.py`. Country-level VSL inputs (UN World Population Prospects, World Bank GDP per capita, US CPI) in the shared `base_data/socioeconomic/` cache.
+- Public result artifacts (beyond the README's preview figures/tables) may be added later once the analysis is finalized.
 - The version under review at Ecosystem Services is archived separately at v0.1.0 / DOI 10.5281/zenodo.20600890 and will not change. Everything from v0.2.0 onward reflects an updated methodology developed for this project's integration into GEP.
 
 ## Author

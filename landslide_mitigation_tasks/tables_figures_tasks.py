@@ -58,7 +58,7 @@ def compute_zonal_statistics(p):
  
             corr = gpd.read_file(corr_ease_path, fid_as_index=True)
  
-            id_field = 'ee_r264_id'
+            id_field = 'ee_r250_id'
  
             deaths_stats = pygeo.zonal_statistics(
                 (avoided_mortality_path, 1), corr_ease_path,

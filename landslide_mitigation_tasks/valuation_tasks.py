@@ -5,7 +5,6 @@ import os
 import json
 import numpy as np
 import pandas as pd
-import glob
 import geopandas as gpd
 from osgeo import gdal
 import pygeoprocessing as pygeo
@@ -374,106 +373,206 @@ def stitch_tiles(p):
     return p
 
 
-def valuation(p):
-    """
-    Creates directory for valuation outputs. 
-    """
-    if p.run_this:
-        return p
 
-# Table 6.1, OECD (2025) Mortality Risk Valuation in Policy Assessment.
-# USD millions, 2022 base year (same as the individual-country CSV).
-GROUP_BASE_VSL_2022 = {
-    'Global': 2.7,
-    'OECD': 7.1,
-    'EU': 8.4,
-    'United States': 8.5,
-    'High-income': 7.9,
-    'Low-and-middle-income': 1.1,
-}
- 
-INCOME_GRP_TO_FALLBACK_GROUP = {
-    '1. High income: OECD': 'OECD',
-    '2. High income: nonOECD': 'High-income',
-    '3. Upper middle income': 'Low-and-middle-income',
-    '4. Lower middle income': 'Low-and-middle-income',
-    '5. Low income': 'Low-and-middle-income',
-}
- 
-# PMPRB CPI-based price-adjustment factors (US CPI-derived): benchmark
-# year 2019 -> 2022 cumulative price-adjustment factor = 1.050
-DEFLATOR_2022_TO_2019 = 1 / 1.050
- 
+
+EPA_VSL_BASE_2008USD = 7.9e6  # EPA's officially-adopted Guidelines VSL, in 2008$
+EPA_VSL_INCOME_ELASTICITY = 0.4  # EPA's adopted elasticity for updating the VSL over time
+                                  # (distinct from the cross-country benefit-transfer step below)
+
+def _compute_epa_vsl_usa(p, target_year):
+    """Update EPA's officially-adopted VSL guidance value ($7.9 million,
+    2008$) to target_year dollars, following EPA's stated methodology:
+    CPI inflation adjustment x real (inflation-adjusted) US GDP per capita
+    growth, raised to EPA's income elasticity of 0.4. See EPA's 2016
+    "Valuing mortality risk reductions for policy: a meta-analytic
+    approach" white paper (Office of Policy, National Center for
+    Environmental Economics) sec 2.1 and 6.3, and the 2010 Guidelines for
+    Preparing Economic Analyses.
+
+    This produced $9,876,237 for target_year=2019 when derived.
+    """
+    cpi_path = p.get_path(os.path.join('socioeconomic', 'fred_cpiaucsl', 'CPIAUCSL.csv'))
+    cpi = pd.read_csv(cpi_path)
+    cpi['observation_date'] = pd.to_datetime(cpi['observation_date'])
+    cpi['year'] = cpi['observation_date'].dt.year
+    cpi_annual = cpi.groupby('year')['CPIAUCSL'].mean()
+    cpi_ratio = cpi_annual.loc[target_year] / cpi_annual.loc[2008]
+
+    gdp_path = p.get_path(os.path.join(
+        'socioeconomic', 'worldbank_gdp_pc_constant2015usd',
+        'API_NY.GDP.PCAP.KD_DS2_en_csv_v2_329799.csv',
+    ))
+    gdp = pd.read_csv(gdp_path, skiprows=4)
+    us_row = gdp[gdp['Country Code'] == 'USA'].iloc[0]
+    gdp_ratio = us_row[str(target_year)] / us_row['2008']
+
+    vsl_usa = EPA_VSL_BASE_2008USD * cpi_ratio * (gdp_ratio ** EPA_VSL_INCOME_ELASTICITY)
+    p.L.info(
+        f'EPA VSL anchor updated to {target_year}$: ${vsl_usa:,.0f} '
+        f'(base ${EPA_VSL_BASE_2008USD:,.0f} [2008$] x CPI ratio {cpi_ratio:.4f} '
+        f'x real GDP per capita ratio {gdp_ratio:.4f}^{EPA_VSL_INCOME_ELASTICITY})'
+    )
+    return vsl_usa
+
+
 def build_vsl_raster(p):
+    """Computes a GDP-adjusted VSL per country from scratch, following the
+    life-years-lost benefit-transfer method (GEP-AQ project): 
+    each country's VSL is the US anchor VSL scaled by the
+    ratio of that country's (GDP per capita x life-years-lost) to the
+    US's own (GDP per capita x life-years-lost), where life-years-lost is
+    approximated as life expectancy at birth minus median age.
+
+    All three raw inputs (life expectancy, median age, GDP per capita)
+    and the US anchor VSL are sourced and cited in
+    ~/Files/base_data/socioeconomic/.
+
+    Zones without a direct estimate (no WPP and/or no GDP-PPP data for
+    that ISO3 - e.g. Taiwan, Cuba, Venezuela, North Korea, several small
+    territories) get a fallback value imputed from peer countries that DO
+    have a direct estimate, in two widening tiers: (1) the median VSL
+    among direct-estimate countries in the same World Bank region
+    (`region_wb`), or (2) the global median across all direct-estimate
+    countries if that region has none. No separate external table.
+    Everything the fallback needs comes from this same computation.
+    `vsl_source` on the exported CSV/GPKG records which tier produced
+    each zone's value.
+    """
     if p.run_this:
-        out_path = os.path.join(p.valuation_dir, 'vsl_usd_2019_1km.tif')
+        target_year = p.prediction_years[0]  # NOTE: assumes single prediction year, matches predict_*_scenarios elsewhere
+        out_path = os.path.join(p.valuation_dir, f'vsl_usd_{target_year}_1km.tif')
         if os.path.exists(out_path) and not p.force_run:
             p.vsl_raster_path = out_path
             return p
- 
-        # ---- 1. Parse OECD VSL CSV ----
-        # NOTE: has commas/special characters in
-        # the name as downloaded, glob to avoid a brittle hardcoded match.
-        oecd_candidates = glob.glob(os.path.join(p.raw_input_data_dir, 'oecd_vsl', '*.csv'))
-        if not oecd_candidates:
-            raise FileNotFoundError(f'No CSV found in {p.raw_input_data_dir}/oecd_vsl/')
-        oecd_path = oecd_candidates[0]
- 
-        oecd = pd.read_csv(oecd_path)
- 
-        if 'MEASURE_VSL' in oecd.columns:
-            oecd = oecd[oecd['MEASURE_VSL'] == 'VSL'].copy()
- 
-        oecd['unit_mult_factor'] = 10 ** oecd['UNIT_MULT'].astype(float)
-        oecd['vsl_usd_2022'] = oecd['OBS_VALUE'].astype(float) * oecd['unit_mult_factor']
-        oecd['vsl_usd_2019'] = oecd['vsl_usd_2022'] * DEFLATOR_2022_TO_2019
- 
-        vsl_by_iso3 = oecd.set_index('REF_AREA')['vsl_usd_2019'].to_dict()
-        p.L.info(f'OECD VSL: {len(vsl_by_iso3)} countries with direct estimates '
-                  f'(deflated to 2019 constant USD, factor={DEFLATOR_2022_TO_2019:.4f}).')
- 
-        # ---- 2. Join to correspondence GPKG ----
-        correspondence_path = p.get_path(os.path.join('cartographic', 'ee_r264_correspondence.gpkg'))
+
+        # ---- 1. Life expectancy + median age (UN World Population Prospects 2024) ----
+        wpp_path = p.get_path(os.path.join(
+            'socioeconomic', 'un_wpp_demographic_indicators',
+            'WPP2024_GEN_F01_DEMOGRAPHIC_INDICATORS_FULL.xlsx',
+        ))
+        wpp = pd.read_excel(wpp_path, sheet_name='Estimates', header=16)
+        wpp = wpp[(wpp['Type'] == 'Country/Area') & (wpp['Year'] == target_year)]
+        wpp = wpp.rename(columns={
+            'ISO3 Alpha-code': 'iso3',
+            'Life Expectancy at Birth, both sexes (years)': 'life_expectancy',
+            'Median Age, as of 1 July (years)': 'median_age',
+        })[['iso3', 'life_expectancy', 'median_age']]
+        wpp['lll'] = wpp['life_expectancy'] - wpp['median_age']  # life-years-lost proxy
+        p.L.info(f'UN WPP {target_year}: {len(wpp)} countries with life expectancy + median age.')
+
+        # ---- 2. GDP per capita, PPP (World Bank) -- cross-country benefit-transfer scaling ----
+        gdp_ppp_path = p.get_path(os.path.join(
+            'socioeconomic', 'worldbank_gdp_pc_ppp',
+            'API_NY.GDP.PCAP.PP.CD_DS2_en_csv_v2_349731.csv',
+        ))
+        gdp_ppp = pd.read_csv(gdp_ppp_path, skiprows=4)
+        gdp_ppp = gdp_ppp.rename(columns={'Country Code': 'iso3', str(target_year): 'gdp_pc_ppp'})[['iso3', 'gdp_pc_ppp']]
+
+        # World Bank's "Country Code" list mixes in aggregate regions (AFE, ARB, ...)
+        # alongside real ISO3 codes - filter using the metadata file's Region field,
+        # which is blank for aggregates.
+        gdp_meta_path = p.get_path(os.path.join(
+            'socioeconomic', 'worldbank_gdp_pc_ppp',
+            'Metadata_Country_API_NY.GDP.PCAP.PP.CD_DS2_en_csv_v2_349731.csv',
+        ))
+        gdp_meta = pd.read_csv(gdp_meta_path)
+        real_countries = set(gdp_meta.loc[gdp_meta['Region'].notna(), 'Country Code'])
+        gdp_ppp = gdp_ppp[gdp_ppp['iso3'].isin(real_countries)]
+        p.L.info(f'World Bank GDP per capita (PPP) {target_year}: {len(gdp_ppp)} countries.')
+
+        # ---- 3. US anchor VSL, updated to target_year via EPA's own methodology ----
+        vsl_usa = _compute_epa_vsl_usa(p, target_year)
+
+        us_wpp = wpp[wpp['iso3'] == 'USA'].iloc[0]
+        us_gdp_pc_ppp = gdp_ppp.loc[gdp_ppp['iso3'] == 'USA', 'gdp_pc_ppp'].iloc[0]
+        vsl_lll_usa = vsl_usa / us_wpp['lll']
+        vsl_lll_gdp_usa = vsl_lll_usa / us_gdp_pc_ppp
+
+        # ---- 4. VSL per country: gdp_pc_ppp x lll x (US's own vsl-per-lll-per-gdp ratio) ----
+        vsl_df = wpp.merge(gdp_ppp, on='iso3', how='inner')
+        vsl_df['vsl'] = vsl_df['gdp_pc_ppp'] * vsl_df['lll'] * vsl_lll_gdp_usa
+        vsl_by_iso3 = vsl_df.set_index('iso3')['vsl'].to_dict()
+        p.L.info(f'VSL computed for {len(vsl_by_iso3)} countries (US anchor: ${vsl_usa:,.0f}).')
+
+        # ---- 5. Join to correspondence GPKG via ISO3 (iso3_r250_label) ----
+        correspondence_path = p.get_path(os.path.join('cartographic', 'ee', 'ee_r250_correspondence.gpkg'))
         corr = gpd.read_file(correspondence_path)
-        iso3_field = 'iso3'
-        if iso3_field not in corr.columns:
+        if 'iso3_r250_label' not in corr.columns:
             raise KeyError(
-                f'{iso3_field} not found in correspondence GPKG -- check '
+                f'iso3_r250_label not found in correspondence GPKG - check '
                 f'actual column names: {list(corr.columns)}'
             )
- 
-        corr['vsl_usd'] = corr[iso3_field].map(vsl_by_iso3)
- 
-        n_direct = corr['vsl_usd'].notna().sum()
- 
-        # ---- Group-level fallback for countries without a direct estimate ----
+
+        corr['vsl_usd'] = corr['iso3_r250_label'].map(vsl_by_iso3)
+        corr['vsl_source'] = np.where(corr['vsl_usd'].notna(), 'direct', None)
+
+        n_matched = corr['vsl_usd'].notna().sum()
+        n_total = len(corr)
+        p.L.info(f'VSL match: {n_matched}/{n_total} zones matched via ISO3 (direct estimate).')
+
+        # ---- 5b. Fallback for zones with no direct estimate (no WPP and/or no
+        # GDP-PPP data for that ISO3): impute from peer countries' ALREADY-
+        # COMPUTED direct VSL estimates:
+        #   1. Region median (World Bank region, `region_wb` - already a
+        #      column on this same correspondence file), among zones with a
+        #      direct estimate in that region.
+        #   2. Global median across all zones with a direct estimate, if a
+        #      region somehow has zero direct estimates of its own.
+        # `vsl_source` records which tier produced each zone's value, so it's
+        # always clear in the exported CSV which numbers are estimated vs
+        # imputed. ----
+        direct = corr[corr['vsl_source'] == 'direct']
+        region_medians = direct.groupby('region_wb')['vsl_usd'].median()
+        global_median = direct['vsl_usd'].median()
+
         needs_fallback = corr['vsl_usd'].isna()
-        fallback_group_vsl_millions = corr.loc[needs_fallback, 'income_grp'].map(
-            lambda ig: GROUP_BASE_VSL_2022.get(INCOME_GRP_TO_FALLBACK_GROUP.get(ig), np.nan)
+        region_fallback = corr.loc[needs_fallback, 'region_wb'].map(region_medians)
+        corr.loc[needs_fallback, 'vsl_usd'] = region_fallback
+        corr.loc[needs_fallback & corr['vsl_usd'].notna(), 'vsl_source'] = 'region_median_fallback'
+
+        still_needs_fallback = corr['vsl_usd'].isna()
+        corr.loc[still_needs_fallback, 'vsl_usd'] = global_median
+        corr.loc[still_needs_fallback, 'vsl_source'] = 'global_median_fallback'
+
+        n_region_fallback = (corr['vsl_source'] == 'region_median_fallback').sum()
+        n_global_fallback = (corr['vsl_source'] == 'global_median_fallback').sum()
+        p.L.info(
+            f'VSL fallback: {n_region_fallback} zones via region median, '
+            f'{n_global_fallback} via global median (${global_median:,.0f}). '
+            f'All {n_total} zones now have a value.'
         )
-        # Anything still missing (unclassified income_grp) -> Global catch-all
-        fallback_group_vsl_millions = fallback_group_vsl_millions.fillna(GROUP_BASE_VSL_2022['Global'])
- 
-        fallback_vsl_usd_2022 = fallback_group_vsl_millions * 1e6
-        fallback_vsl_usd_2019 = fallback_vsl_usd_2022 * DEFLATOR_2022_TO_2019
-        corr.loc[needs_fallback, 'vsl_usd'] = fallback_vsl_usd_2019
- 
-        n_group_fallback = (needs_fallback & corr['vsl_usd'].notna()).sum()
-        p.L.info(f'VSL coverage: {n_direct} direct OECD estimates, '
-                  f'{n_group_fallback} via income-group fallback (Table 6.1), '
-                  f'{corr["vsl_usd"].isna().sum()} still unmatched.')
- 
-        # ---- 3. Reproject to EASE-Grid, rasterize ----
+
+        # ---- 5c. Export the full computation as a shareable CSV -- every
+        # input column plus IDs, so the whole panel can be inspected or
+        # shared without needing to re-run the pipeline. ----
+        export_cols = [
+            'iso3_r250_id', 'iso3_r250_label', 'name_long', 'income_grp', 'region_wb',
+            'vsl_usd', 'vsl_source',
+        ]
+        vsl_export = corr[export_cols].merge(
+            vsl_df[['iso3', 'life_expectancy', 'median_age', 'lll', 'gdp_pc_ppp']],
+            left_on='iso3_r250_label', right_on='iso3', how='left',
+        ).drop(columns='iso3')
+        vsl_export = vsl_export[[
+            'iso3_r250_id', 'iso3_r250_label', 'name_long', 'income_grp', 'region_wb',
+            'life_expectancy', 'median_age', 'lll', 'gdp_pc_ppp',
+            'vsl_usd', 'vsl_source',
+        ]]
+        vsl_csv_path = os.path.join(p.valuation_dir, f'vsl_by_country_{target_year}.csv')
+        vsl_export.to_csv(vsl_csv_path, index=False)
+        p.L.info(f'VSL panel (all inputs + IDs) exported: {vsl_csv_path}')
+
+        # ---- 6. Reproject to EASE-Grid, rasterize ----
         corr_ease = corr.to_crs('EPSG:6933')
         work_dir = os.path.join(p.valuation_dir, 'vsl_work')
         os.makedirs(work_dir, exist_ok=True)
         temp_gpkg = os.path.join(work_dir, 'corr_ease_vsl.gpkg')
         corr_ease.to_file(temp_gpkg, driver='GPKG')
- 
+
         ref_info = pygeo.get_raster_info(p.ease_grid_reference_path)
         gt = ref_info['geotransform']
         n_cols, n_rows = ref_info['raster_size']
- 
+
         driver = gdal.GetDriverByName('GTiff')
         ds_out = driver.Create(
             out_path, n_cols, n_rows, 1, gdal.GDT_Float32,
@@ -486,16 +585,23 @@ def build_vsl_raster(p):
         band_out.SetNoDataValue(-9999.0)
         band_out.Fill(-9999.0)
         ds_out = None
- 
+
         pygeo.rasterize(
             temp_gpkg, out_path,
             option_list=['ATTRIBUTE=vsl_usd'],
         )
- 
-        p.L.info(f'VSL raster (2019 constant USD): {out_path}')
+
+        p.L.info(f'VSL raster: {out_path}')
         p.vsl_raster_path = out_path
     return p
 
+
+def valuation(p):
+    """
+    Creates directory for valuation outputs. 
+    """
+    if p.run_this:
+        return p
 
 
 def compute_avoided_mortality(p):
@@ -507,7 +613,7 @@ def compute_avoided_mortality(p):
             deaths_full_impacts_path = os.path.join(
                 p.stitch_tiles_dir, f'expected_deaths_full_impacts_{year}.tif'
             )
-            vsl_path = os.path.join(p.valuation_dir, 'vsl_usd_2019_1km.tif')
+            vsl_path = os.path.join(p.valuation_dir, f'vsl_usd_{year}_1km.tif')
  
             avoided_mortality_path = os.path.join(p.valuation_dir, f'avoided_mortality_{year}.tif')
             avoided_mortality_value_path = os.path.join(
