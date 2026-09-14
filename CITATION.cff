@@ -29,6 +29,6 @@ keywords:
   - ecosystem valuation
   - natural capital accounting
 license: MIT
-commit: ddbbdbaab8e3479b5efe3c3930641bc7e6bbbc67
-version: v0.2.0
-date-released: '2026-08-05'
+commit: bec2715a84965fafc361613e07c4c913e7c893b3
+version: v0.2.1
+date-released: '2026-09-14'
